@@ -2,7 +2,7 @@
 ## Master Build Handoff, Constitution, and Source of Truth
 
 **Document status:** Governing specification — owner ratified decisions D-1 through D-7 on 2026-07-29 (§28.2)  
-**Version:** 1.1.1 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`, finding IDs cited as R: C-n/M-n/N-n/O-n; v1.1.1 incorporates the 2026-07-29 practice connection audit, `docs/audits/2026-07-29-oanda-practice-connection-audit.md`)  
+**Version:** 1.1.2 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`, finding IDs cited as R: C-n/M-n/N-n/O-n; v1.1.1–v1.1.2 incorporate the 2026-07-29 practice connection audit findings F-1 and F-4, `docs/audits/2026-07-29-oanda-practice-connection-audit.md`)  
 **Owner:** Jordan  
 **Primary engineering environment:** Claude Code on a single laptop  
 **Initial live capital:** $250  
@@ -924,7 +924,7 @@ Specification
 - No future leakage
 - No look-ahead indicators
 - Purged or embargoed validation where appropriate
-- Explicit transaction-cost model
+- Explicit transaction-cost model, calibrated from live measured execution data or a licensed historical tick source — never from the practice feed, which serves near-constant synthetic spreads (audit F-4)
 - Parameter sensitivity analysis
 - Multiple-testing record
 - No promotion based solely on one favorable interval
@@ -967,6 +967,8 @@ Because the system starts with real capital, live deployment must still be stage
 A missed or expired approval is a no-trade and counts as a valid probation observation (rule 6 of §0 makes "no trade" a preferred outcome; approval at 2:00–4:30 a.m. owner-local time will be missed sometimes, and that is acceptable). The owner may optionally pre-approve a session envelope — permitted strategy set and maximum tier — at briefing time, with per-trade approval retained for High and Exceptional candidates. (R: M-3)
 
 A profitable short run does not prove readiness. Operational correctness, stop protection, reconciliation, and rule adherence are mandatory.
+
+Shadow and paper phases run on the practice feed, whose spreads are near-constant synthetic values (audit F-4). They therefore validate process, session logic, and order lifecycle — not execution economics. Cost and slippage assumptions come from the §12.4 transaction-cost model, and no strategy may be promoted on paper-measured execution quality alone.
 
 ## Trade approval card
 
@@ -1607,6 +1609,7 @@ Amendments applied per the design review `docs/reviews/2026-07-29-master-handoff
 | §24 | Configuration keys for all of the above; London-anchored session block | C-2, C-3, N-1, N-2, N-4 |
 | §26 | Cost estimate must include cost-vs-plausible-return comparison | O-2 |
 | §3.2, §16, §21 | v1.1.1: margin overlay computed from per-instrument broker margin rates; live re-audit gate before Phase 7 recorded (audit finding F-1: GBP_USD 5% vs account-level 2%) | C-1 |
+| §12.4, §13 | v1.1.2: transaction-cost model may not be calibrated from the practice feed (near-constant synthetic spreads, audit F-4); shadow/paper validate process, not execution economics; Phase 3 gains a historical tick-source audit item | N-9 |
 
 ## 28.2 Owner decisions — ratified 2026-07-29
 

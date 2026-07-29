@@ -77,6 +77,59 @@ amount — above the 8% spread-drag guidance in the design review (N-9).
 the deterministic execution-conditions component of the edge score must use
 live measured spread, not an assumption.
 
+### F-4 · The practice feed serves a near-constant synthetic spread — unusable for cost modeling
+
+Owner-run follow-up measurement during the trading window itself (M15
+close-to-close spreads, 08:00–10:15 London/BST, all candles complete):
+
+| London (BST) | GBP_USD | EUR_USD |
+|---|---:|---:|
+| 08:00 | 1.8 | 1.6 |
+| 08:15 | 1.7 | 1.6 |
+| 08:30 | 2.0 | 1.7 |
+| 08:45 | 1.6 | 1.6 |
+| 09:00 | 1.9 | 1.5 |
+| 09:15 | 1.9 | 1.6 |
+| 09:30 | 1.9 | 1.6 |
+| 09:45 | 1.9 | 1.5 |
+| 10:00 | 1.8 | 1.5 |
+| 10:15 | 1.8 | 1.5 |
+
+Mean: GBP_USD 1.83 pips (range 1.6–2.0), EUR_USD 1.57 pips (range 1.5–1.7).
+
+The significant result is the absence of variation. Real spreads on these
+pairs compress meaningfully into the London morning and widen around news and
+rollover; here the peak-session averages sit within ~0.1 pip of the earlier
+off-peak snapshot (F-3: 1.9/1.5), with an intraday range of ~0.4 pips on
+cable and ~0.2 on euro. Supporting evidence that this is the feed, not the
+market: EUR_USD candle volume *declined* across the window (1119 → 726) while
+real euro flow builds into 08:00–09:00 UTC, and the off-peak snapshot was
+taken ~60–75 pips away in price (hours apart) at the same spreads.
+
+**Consequence:** spread is effectively a constant in the practice
+environment, not a variable. Any cost model, backtest calibration, or edge
+score execution-conditions input derived from this connector will understate
+live execution cost in volatile periods and overstate it in quiet peak
+liquidity.
+
+**Actions:**
+
+- The §12.4 transaction-cost model must be calibrated from live measured
+  execution data or a licensed historical tick source — never from the
+  practice feed (spec patched, v1.1.2).
+- Shadow and paper phases (which run on this feed) validate process,
+  session logic, and order lifecycle — not execution economics. No strategy
+  may be promoted on paper-measured execution quality alone (spec patched,
+  v1.1.2, §13).
+- Phase 3 connector audit gains an item: select and license a historical
+  tick/spread source (candidates to evaluate: Dukascopy historical tick
+  data, TrueFX). Live measured spreads become available once a live
+  read-only connection exists, which is in any case a Phase 7 prerequisite
+  (F-2).
+- The practice feed remains fully fit for its actual Phase 0/4 purposes:
+  connectivity, account/instrument specs, session logic, and order-lifecycle
+  testing.
+
 ## Standing caveats
 
 - Token was transmitted through chat during setup; owner should rotate it in
