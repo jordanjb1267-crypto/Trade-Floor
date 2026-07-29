@@ -27,3 +27,7 @@ venv/
 # OS / editor
 .DS_Store
 *.swp
+
+# Build artifacts
+dist/
+*.mcpb
