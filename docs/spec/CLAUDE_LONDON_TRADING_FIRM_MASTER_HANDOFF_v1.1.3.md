@@ -2,7 +2,7 @@
 ## Master Build Handoff, Constitution, and Source of Truth
 
 **Document status:** Governing specification — owner ratified decisions D-1 through D-7 on 2026-07-29 (§28.2)  
-**Version:** 1.1.2 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`, finding IDs cited as R: C-n/M-n/N-n/O-n; v1.1.1–v1.1.2 incorporate the 2026-07-29 practice connection audit findings F-1 and F-4, `docs/audits/2026-07-29-oanda-practice-connection-audit.md`)  
+**Version:** 1.1.3 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`, finding IDs cited as R: C-n/M-n/N-n/O-n; v1.1.1–v1.1.3 incorporate the 2026-07-29 practice connection audit findings F-1 through F-5, `docs/audits/2026-07-29-oanda-practice-connection-audit.md`)  
 **Owner:** Jordan  
 **Primary engineering environment:** Claude Code on a single laptop  
 **Initial live capital:** $250  
@@ -924,7 +924,7 @@ Specification
 - No future leakage
 - No look-ahead indicators
 - Purged or embargoed validation where appropriate
-- Explicit transaction-cost model, calibrated from live measured execution data or a licensed historical tick source — never from the practice feed, which serves near-constant synthetic spreads (audit F-4)
+- Explicit transaction-cost model with spread-regime awareness (session, news, rollover). Practice-feed spread dynamics are validated as plausible and usable for spread modeling (audit F-5, correcting F-4); fill quality and slippage must be calibrated from live execution data or a licensed historical tick source — honest quotes are not live fills
 - Parameter sensitivity analysis
 - Multiple-testing record
 - No promotion based solely on one favorable interval
@@ -968,7 +968,7 @@ A missed or expired approval is a no-trade and counts as a valid probation obser
 
 A profitable short run does not prove readiness. Operational correctness, stop protection, reconciliation, and rule adherence are mandatory.
 
-Shadow and paper phases run on the practice feed, whose spreads are near-constant synthetic values (audit F-4). They therefore validate process, session logic, and order lifecycle — not execution economics. Cost and slippage assumptions come from the §12.4 transaction-cost model, and no strategy may be promoted on paper-measured execution quality alone.
+Shadow and paper phases run on the practice feed, whose quoted spreads behave plausibly (audit F-5) but whose fills are not live fills. They validate process, session logic, order lifecycle, and spread-aware cost accounting — not fill quality or slippage. Slippage assumptions come from the §12.4 transaction-cost model, and no strategy may be promoted on paper-measured execution quality alone.
 
 ## Trade approval card
 
@@ -1009,6 +1009,8 @@ Default schedule, **anchored in Europe/London** (R: C-2). America/Chicago equiva
 All boundaries are evaluated with the `Europe/London` IANA zone, never fixed UTC offsets. During US/UK DST-divergence windows (in 2026: 9–28 March and 25–31 October) the Chicago display times shift by one hour; the London anchor does not move.
 
 Session validity requires a holiday-calendar input: if the calendar is missing, or marks a UK or US market holiday, the session does not activate (fail closed). Friday sessions observe the same flatten boundary; no position may be held over a weekend. A failure to flatten is a broker-health kill-switch trigger with immediate owner escalation. (R: N-11)
+
+The flatten boundary also guarantees no exposure through the 21:00 UTC rollover, where audit F-5 measured ~10× spread blowouts with near-zero depth. This boundary is inviolate, and any future strategy, trailing-stop, or stop-adjustment logic that could act through 21:00 UTC requires an explicit rollover blackout filter.
 
 ## Session state machine
 
@@ -1609,7 +1611,8 @@ Amendments applied per the design review `docs/reviews/2026-07-29-master-handoff
 | §24 | Configuration keys for all of the above; London-anchored session block | C-2, C-3, N-1, N-2, N-4 |
 | §26 | Cost estimate must include cost-vs-plausible-return comparison | O-2 |
 | §3.2, §16, §21 | v1.1.1: margin overlay computed from per-instrument broker margin rates; live re-audit gate before Phase 7 recorded (audit finding F-1: GBP_USD 5% vs account-level 2%) | C-1 |
-| §12.4, §13 | v1.1.2: transaction-cost model may not be calibrated from the practice feed (near-constant synthetic spreads, audit F-4); shadow/paper validate process, not execution economics; Phase 3 gains a historical tick-source audit item | N-9 |
+| §12.4, §13 | v1.1.2: transaction-cost model may not be calibrated from the practice feed (audit F-4); shadow/paper validate process, not execution economics | N-9 |
+| §12.4, §13, §14 | v1.1.3: audit F-5 falsifies F-4 — practice spread dynamics are plausible and usable for spread modeling; fill quality/slippage still require live or licensed historical execution data; 21:00 UTC rollover hazard recorded (~10× spread, near-zero depth) and the flatten boundary declared inviolate with a rollover blackout requirement for any future through-rollover logic | N-9 |
 
 ## 28.2 Owner decisions — ratified 2026-07-29
 

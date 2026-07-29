@@ -77,7 +77,12 @@ amount — above the 8% spread-drag guidance in the design review (N-9).
 the deterministic execution-conditions component of the edge score must use
 live measured spread, not an assumption.
 
-### F-4 · The practice feed serves a near-constant synthetic spread — unusable for cost modeling
+### F-4 · The practice feed serves a near-constant synthetic spread — unusable for cost modeling **[SUPERSEDED by F-5]**
+
+> **Status: superseded.** The conclusion below was falsified by targeted
+> follow-up testing the same day (F-5). Preserved unedited per the audit
+> doctrine (§0.11): the record shows what was believed, on what evidence,
+> and how it was corrected.
 
 Owner-run follow-up measurement during the trading window itself (M15
 close-to-close spreads, 08:00–10:15 London/BST, all candles complete):
@@ -129,6 +134,57 @@ liquidity.
 - The practice feed remains fully fit for its actual Phase 0/4 purposes:
   connectivity, account/instrument specs, session logic, and order-lifecycle
   testing.
+
+### F-5 · Correction of F-4: spread is genuinely variable; the operative hazard is the 21:00 UTC rollover window
+
+Owner-run falsification tests: (a) the rollover boundary, where real spreads
+blow out hardest, at M5 granularity; (b) a multi-day daily series.
+
+GBP_USD M5 across the prior day's 21:00 UTC rollover:
+
+| UTC | Spread (pips) | Volume |
+|---|---:|---:|
+| 20:45 | 1.5 | 182 |
+| 20:50 | 1.7 | 119 |
+| 20:55 | 2.1 | 381 |
+| 21:00 | **20.0** | **1** |
+| 21:05 | 9.2 | 81 |
+| 21:10 | 5.9 | 41 |
+| 21:15 | 7.8 | 304 |
+| 21:20 | 4.4 | 210 |
+| 21:25 | 7.1 | 145 |
+
+An 11× blowout at the rollover instant with volume collapsing to a single
+tick — a textbook liquidity vacuum — decaying over ~30 minutes and still
+elevated (~7 pips) half an hour later. Daily candles corroborate this as
+structural: OANDA daily bars open/close at 21:00 UTC, so the open samples the
+rollover instant directly; across 13 sessions (Jul 12–28) open spreads ran
+2.6–20.0 pips (clustering 10–20) while closes were mostly ~2 pips, and the
+daily open exactly matched the M5 21:00 candle across independent queries.
+(Two ~9-pip closes on Jul 16 and Jul 23 noted; n=2, no weekday pattern
+inferred.)
+
+**Corrected picture:** F-4 over-read one stable window as a synthetic
+constant. Majors at 1.5–2.0 pips with 0.2–0.4 pips of intraday range during
+peak London is realistic deep-liquidity behavior, and the feed reproduces the
+rollover regime faithfully. The feed's spread dynamics are plausible and
+usable for spread modeling.
+
+**Consequences (replacing F-4's):**
+
+- The practice feed is acceptable as a **spread-regime data source** for the
+  §12.4 transaction-cost model, including the rollover regime. **Fill quality
+  and slippage still require live or licensed historical execution data**
+  (F-2 unchanged): honest quotes are not live fills.
+- The operative hazard is the rollover window: roughly 10× normal transaction
+  cost and near-zero depth for minutes around 21:00 UTC. The mandate's
+  mandatory flatten boundary (11:00 London) already guarantees no exposure
+  through rollover — this evidence hardens that rule; it must remain
+  inviolate. Any future strategy, trailing-stop, or stop-adjustment logic
+  that could act through 21:00 UTC requires an explicit rollover blackout
+  filter.
+- Spec re-patched (v1.1.3): §12.4 and §13 wording corrected; rollover
+  protection recorded in §14.
 
 ## Standing caveats
 
