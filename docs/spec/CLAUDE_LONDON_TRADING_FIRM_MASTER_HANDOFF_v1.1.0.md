@@ -1,8 +1,8 @@
 # CLAUDE LONDON TRADING FIRM
 ## Master Build Handoff, Constitution, and Source of Truth
 
-**Document status:** DRAFT amendment — becomes governing upon owner ratification of decisions D-1 through D-7 (§28)  
-**Version:** 1.1.0-draft (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`; finding IDs cited as R: C-n/M-n/N-n/O-n)  
+**Document status:** Governing specification — owner ratified decisions D-1 through D-7 on 2026-07-29 (§28.2)  
+**Version:** 1.1.0 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`; finding IDs cited as R: C-n/M-n/N-n/O-n)  
 **Owner:** Jordan  
 **Primary engineering environment:** Claude Code on a single laptop  
 **Initial live capital:** $250  
@@ -152,7 +152,7 @@ allowed_risk = minimum(tier_dollar_cap, tier_equity_fraction * E)
 
 Risk contracts continuously below the tier anchor and never expands above the tier's dollar cap until a confirmed promotion.
 
-**Margin-feasibility overlay (R: C-1, M-2).** Before a candidate may be classified at any tier, the risk engine must deterministically verify that the margin required at the intended size — under the account's actual leverage cap — does not exceed `margin_utilization_cap_fraction` (default 30%) of closed equity. The system must publish, per tier anchor and instrument, the minimum stop distance at which each tier is executable, and recompute it at every tier transition and material rate move. At the $250 anchor under the US 50:1 cap, the High and Exceptional tiers are executable only at wide stops; Exceptional is effectively aspirational until approximately the $1,000 anchor. **[OWNER DECISION D-4: retain the 10% Exceptional ceiling under this overlay, reduce it to 5%, or defer the tier — recommended default: retain under overlay, revisit at first tier promotion.]**
+**Margin-feasibility overlay (R: C-1, M-2).** Before a candidate may be classified at any tier, the risk engine must deterministically verify that the margin required at the intended size — under the account's actual leverage cap — does not exceed `margin_utilization_cap_fraction` (default 30%) of closed equity. The system must publish, per tier anchor and instrument, the minimum stop distance at which each tier is executable, and recompute it at every tier transition and material rate move. At the $250 anchor under the US 50:1 cap, the High and Exceptional tiers are executable only at wide stops; Exceptional is effectively aspirational until approximately the $1,000 anchor. **[D-4 ratified 2026-07-29: 10% ceiling retained under this overlay; revisit at first tier promotion.]**
 
 ## 3.3 Risk ceiling formula
 
@@ -471,7 +471,7 @@ Regime duty — classifies:
 - Suppressed volatility
 - Event-distorted conditions
 
-Macro and event duty — maps scheduled events and trading restrictions. It must not hallucinate calendar data. Missing or stale calendar data causes fail-closed behavior according to configuration. Calendar data must arrive as structured fields (times, currencies, impact ratings) from an allowlisted source **[D-7]**; free-text news is summarize-only and may only downgrade the risk state, never upgrade it. (R: M-5)
+Macro and event duty — maps scheduled events and trading restrictions. It must not hallucinate calendar data. Missing or stale calendar data causes fail-closed behavior according to configuration. Calendar data must arrive as structured fields (times, currencies, impact ratings) from the allowlisted source — the Financial Modeling Prep economic-calendar API, Starter plan or above (**D-7**, §28.2); free-text news is summarize-only and may only downgrade the risk state, never upgrade it. (R: M-5)
 
 Liquidity and structure duty — maps validated structural levels and must express them as deterministic data where possible rather than subjective chart prose.
 
@@ -1121,7 +1121,7 @@ The owner trades from the United States. The audit must treat these as binding c
 - Leverage capped at 50:1 on major pairs (2% security deposit) and 20:1 on others (CFTC retail forex rules)
 - NFA Compliance Rule 2-43(b): offsetting positions prohibited within a pair; FIFO close-out; no hedging
 - Retail spot forex is available only through CFTC-registered RFED/FCM brokers; the current set is approximately OANDA, FOREX.com (GAIN), IG US / tastyfx, and Interactive Brokers
-- Sizing granularity is the deciding constraint at the $250 tier: sub-1,000-unit orders are required for small risk at wide stops, and among US brokers effectively only OANDA offers 1-unit granularity plus a public REST API (v20). **[OWNER DECISION D-1: confirm OANDA US as the audit's working target, or direct otherwise]**
+- Sizing granularity is the deciding constraint at the $250 tier: sub-1,000-unit orders are required for small risk at wide stops, and among US brokers effectively only OANDA offers 1-unit granularity plus a public REST API (v20). **[D-1 ratified 2026-07-29: OANDA US confirmed as the audit's working target.]**
 - Tax: US spot forex defaults to IRC Section 988 ordinary-income treatment; keep records accordingly and confirm treatment with a CPA
 - Trading solely the owner's own capital requires no license or registration; "firm" is branding. Accepting outside capital would change this and requires separate legal review before any such step
 
@@ -1492,6 +1492,11 @@ execution:
   idempotency_required: true
   fail_closed: true
 
+data:
+  economic_calendar_source: financial_modeling_prep
+  economic_calendar_endpoint: stable/economics-calendar
+  economic_calendar_min_plan: starter
+
 session:
   anchor_timezone: Europe/London
   startup_london: "07:15"
@@ -1601,14 +1606,16 @@ Amendments applied per the design review `docs/reviews/2026-07-29-master-handoff
 | §24 | Configuration keys for all of the above; London-anchored session block | C-2, C-3, N-1, N-2, N-4 |
 | §26 | Cost estimate must include cost-vs-plausible-return comparison | O-2 |
 
-## 28.2 Pending owner decisions
+## 28.2 Owner decisions — ratified 2026-07-29
 
-This draft becomes the governing specification when the owner ratifies (or overrides) each decision below. Recommended defaults are already applied in the text above; overriding a decision requires editing the corresponding section and re-versioning.
+All seven decisions were ratified by the owner on 2026-07-29: D-1 through D-6 as recommended, D-7 with the source selected and verified by the implementer at the owner's direction. Changing any of them now requires editing the corresponding section and re-versioning this document.
 
-- [ ] **D-1 Broker target:** OANDA US as the working audit target (sole US RFED with 1-unit granularity plus a public API) — §16
-- [ ] **D-2 Promotion default:** owner-approved pending promotion (was: automatic) — §4.2
-- [ ] **D-3 Deposit accounting:** deposits never advance milestone tiers — §4.2
-- [ ] **D-4 Exceptional tier:** retained at 10% under the margin-feasibility overlay; revisit at first tier promotion — §3.2
-- [ ] **D-5 Probation exit sample:** 30 correctly processed signals — §12.6, §13
-- [ ] **D-6 Week boundary:** ISO week, Europe/London — §3.4
-- [ ] **D-7 Economic-calendar source:** allowlisted structured source selected in the Phase 0 connector audit, with licensing verified — §6.3
+- [x] **D-1 Broker target:** OANDA US as the working audit target (sole US RFED with 1-unit granularity plus a public API) — §16
+- [x] **D-2 Promotion default:** owner-approved pending promotion (was: automatic) — §4.2
+- [x] **D-3 Deposit accounting:** deposits never advance milestone tiers — §4.2
+- [x] **D-4 Exceptional tier:** retained at 10% under the margin-feasibility overlay; revisit at first tier promotion — §3.2
+- [x] **D-5 Probation exit sample:** 30 correctly processed signals — §12.6, §13
+- [x] **D-6 Week boundary:** ISO week, Europe/London — §3.4
+- [x] **D-7 Economic-calendar source:** **Financial Modeling Prep economic-calendar API** (`stable/economics-calendar`), Starter plan or above — §6.3, §24.
+
+D-7 selection record: structured JSON events (timestamp, country/currency, event name, impact rating, estimate/previous/actual) satisfying the §6.3/§17 structured-fields rule; licensed for programmatic use. Verified live on 2026-07-29 that the endpoint exists and is gated to Starter-and-above plans; **the owner's current FMP plan does not include it — an upgrade (approximately $25–30/month; verify price at purchase) is required before Phase 0 completes.** Rejected alternatives: Forex Factory and Investing.com calendars (scrape-class, no programmatic license — fail the allowlist requirement), Finnhub and Trading Economics (calendars gated to costlier tiers), OANDA fxLabs calendar (deprecated). Feed outages are already handled fail-closed (§0.10, §24 `reject_unknown_news_state`).
