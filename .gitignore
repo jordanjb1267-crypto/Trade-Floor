@@ -36,3 +36,4 @@ venv/
 # Build artifacts
 dist/
 *.mcpb
+*.egg-info/
