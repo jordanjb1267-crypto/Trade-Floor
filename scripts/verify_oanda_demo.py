@@ -144,10 +144,12 @@ def main() -> int:
         print(f"{'PASS' if ok else 'FAIL':<6} {label}\n       {detail}")
         failures += 0 if ok else 1
 
-    print(
-        f"\n{len(checks) - failures}/{len(checks)} checks passed. "
-        + ("Demo connection audit: OK." if failures == 0 else "Resolve failures before Phase 0 sign-off.")
+    verdict = (
+        "Demo connection audit: OK."
+        if failures == 0
+        else "Resolve failures before Phase 0 sign-off."
     )
+    print(f"\n{len(checks) - failures}/{len(checks)} checks passed. {verdict}")
     return 0 if failures == 0 else 1
 
 

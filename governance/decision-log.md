@@ -1,0 +1,53 @@
+# Decision Log
+
+Append-only. Every material decision gets a dated entry; never edit past
+entries — append corrections (§0.11).
+
+---
+
+**2026-07-29 · Spec received and reviewed.** Master Handoff v1.0.0 received
+from owner. Full design review delivered
+(`docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`): 3 Critical,
+8 Major, 13 Minor findings, 4 Observations. Verdict: sound architecture,
+not buildable as written; amendments required before Phases 2+.
+
+**2026-07-29 · v1.1.0 amendments drafted.** All review amendments applied to
+a draft spec with recommended defaults for the seven blocking decisions.
+
+**2026-07-29 · Owner ratified D-1…D-7.** Broker target OANDA US (D-1);
+owner-approved tier promotion (D-2); deposits never advance milestones (D-3);
+Exceptional retained at 10% under margin overlay (D-4); probation exit at 30
+processed signals (D-5); ISO week Europe/London (D-6); FMP economics-calendar
+as the allowlisted calendar source, implementer-selected at owner direction
+(D-7). Draft promoted to governing v1.1.0.
+
+**2026-07-29 · Calendar source verified (D-7 closed).** FMP calendar endpoint
+verified live on the owner's upgraded plan: 508 structured events/3 days with
+impact ratings. Caveat recorded: feed timestamps are unmarked UTC — pin and
+test in Phase 0/2 (§10.3).
+
+**2026-07-29 · Phase 0 broker connection audit (owner-run).** 8/8 PASS via
+the read-only MCP bundle on the practice host. Findings recorded in
+`docs/audits/2026-07-29-oanda-practice-connection-audit.md`:
+F-1 per-instrument margin (GBP_USD 5% vs account 2%) → spec v1.1.1;
+F-2 live re-audit gate before Phase 7; F-3 off-peak spreads 1.5–1.9 pips.
+
+**2026-07-29 · F-4 recorded, then superseded by F-5.** London-window
+measurement suggested near-constant synthetic spreads (v1.1.2); owner-run
+falsification across the 21:00 UTC rollover and 13 daily sessions corrected
+it — the feed reproduces real spread regimes including a ~10× rollover
+blowout. Spec v1.1.3: practice feed usable for spread modeling; fills and
+slippage require live/licensed data; 11:00 London flatten boundary declared
+inviolate as rollover protection. F-4 preserved unedited in the audit record.
+
+**2026-07-29 · Phase 1 started (owner instruction).** Deliverables per §22:
+repo structure, CLAUDE.md, six agent definitions (§6 consolidated roster),
+settings/permissions/hooks (§7.2–7.3), §24 config baseline with validated
+schema and constitution-violation tests, governance documents, CI baseline.
+Protection hook verified live during its own installation: it blocked a test
+file containing a static credential-shaped string (test rewritten to build
+such strings at runtime).
+
+**Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
+passed through chat during setup; merge PR #1 to make v1.1.3 governing on
+`main`.

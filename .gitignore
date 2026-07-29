@@ -7,10 +7,15 @@
 secrets/
 
 # Runtime state, data, and backups (spec §9: only encrypted, approved data may be committed)
-state/
-data/raw/
-data/normalized/
-database/backups/
+state/**
+!state/**/
+!state/**/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/normalized/*
+!data/normalized/.gitkeep
+database/backups/*
+!database/backups/.gitkeep
 *.sqlite
 *.sqlite3
 *.db

@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+src/trading_firm/__init__.py
+src/trading_firm/config.py
+src/trading_firm.egg-info/PKG-INFO
+src/trading_firm.egg-info/SOURCES.txt
+src/trading_firm.egg-info/dependency_links.txt
+src/trading_firm.egg-info/requires.txt
+src/trading_firm.egg-info/top_level.txt
