@@ -306,7 +306,16 @@ const TOOLS = [
         push(
           `${name}: 1-unit granularity`,
           parseFloat(inst.minimumTradeSize) <= 1 && parseInt(inst.tradeUnitsPrecision, 10) === 0,
-          `minimumTradeSize=${inst.minimumTradeSize} tradeUnitsPrecision=${inst.tradeUnitsPrecision} marginRate=${inst.marginRate}`
+          `minimumTradeSize=${inst.minimumTradeSize} tradeUnitsPrecision=${inst.tradeUnitsPrecision}`
+        );
+        const instRate = parseFloat(inst.marginRate);
+        push(
+          `${name}: per-instrument margin rate recorded (governs sizing)`,
+          Number.isFinite(instRate) && instRate > 0,
+          `marginRate=${inst.marginRate} (leverage ${(1 / instRate).toFixed(0)}:1)` +
+            (instRate > marginRate
+              ? " — STRICTER than account-level; sizing must use this rate"
+              : "")
         );
       }
 
@@ -364,7 +373,7 @@ async function handle(msg) {
           ? requested
           : PROTOCOL_VERSIONS[PROTOCOL_VERSIONS.length - 1],
         capabilities: { tools: {} },
-        serverInfo: { name: "oanda-practice-readonly", version: "0.1.0" },
+        serverInfo: { name: "oanda-practice-readonly", version: "0.1.1" },
       },
     });
   } else if (method === "notifications/initialized" || (method || "").startsWith("notifications/")) {

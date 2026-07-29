@@ -2,7 +2,7 @@
 ## Master Build Handoff, Constitution, and Source of Truth
 
 **Document status:** Governing specification — owner ratified decisions D-1 through D-7 on 2026-07-29 (§28.2)  
-**Version:** 1.1.0 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`; finding IDs cited as R: C-n/M-n/N-n/O-n)  
+**Version:** 1.1.1 (amends v1.0.0 per `docs/reviews/2026-07-29-master-handoff-v1.0.0-review.md`, finding IDs cited as R: C-n/M-n/N-n/O-n; v1.1.1 incorporates the 2026-07-29 practice connection audit, `docs/audits/2026-07-29-oanda-practice-connection-audit.md`)  
 **Owner:** Jordan  
 **Primary engineering environment:** Claude Code on a single laptop  
 **Initial live capital:** $250  
@@ -152,7 +152,7 @@ allowed_risk = minimum(tier_dollar_cap, tier_equity_fraction * E)
 
 Risk contracts continuously below the tier anchor and never expands above the tier's dollar cap until a confirmed promotion.
 
-**Margin-feasibility overlay (R: C-1, M-2).** Before a candidate may be classified at any tier, the risk engine must deterministically verify that the margin required at the intended size — under the account's actual leverage cap — does not exceed `margin_utilization_cap_fraction` (default 30%) of closed equity. The system must publish, per tier anchor and instrument, the minimum stop distance at which each tier is executable, and recompute it at every tier transition and material rate move. At the $250 anchor under the US 50:1 cap, the High and Exceptional tiers are executable only at wide stops; Exceptional is effectively aspirational until approximately the $1,000 anchor. **[D-4 ratified 2026-07-29: 10% ceiling retained under this overlay; revisit at first tier promotion.]**
+**Margin-feasibility overlay (R: C-1, M-2).** Before a candidate may be classified at any tier, the risk engine must deterministically verify that the margin required at the intended size does not exceed `margin_utilization_cap_fraction` (default 30%) of closed equity — computed with **the instrument's own margin rate as read from the broker's instrument record at decision time**. Per-instrument overrides govern actual margin; the account-level rate is only a lower bound (the 2026-07-29 practice audit found GBP_USD at 5%/20:1 against an account-level 2%/50:1 — a 2.5× difference). The system must publish, per tier anchor and instrument, the minimum stop distance at which each tier is executable, and recompute it at every tier transition and material rate move. At the $250 anchor, the High and Exceptional tiers are executable only at wide stops; on GBP_USD at its observed 5% margin rate, Exceptional is not executable below a ~66-pip stop even at 100% margin utilization. Exceptional is effectively aspirational until approximately the $1,000 anchor. **[D-4 ratified 2026-07-29: 10% ceiling retained under this overlay; revisit at first tier promotion.]**
 
 ## 3.3 Risk ceiling formula
 
@@ -1119,6 +1119,7 @@ Do not connect live funds until the owner approves the broker audit.
 The owner trades from the United States. The audit must treat these as binding constraints, re-verified at audit time:
 
 - Leverage capped at 50:1 on major pairs (2% security deposit) and 20:1 on others (CFTC retail forex rules)
+- Brokers may impose per-instrument margin requirements stricter than the CFTC minimum, and these govern actual sizing: the 2026-07-29 practice audit recorded GBP_USD at 5% (20:1) against an account-level 2%. The risk engine must read each instrument's margin rate from the broker and never assume the account-level rate (R: C-1)
 - NFA Compliance Rule 2-43(b): offsetting positions prohibited within a pair; FIFO close-out; no hedging
 - Retail spot forex is available only through CFTC-registered RFED/FCM brokers; the current set is approximately OANDA, FOREX.com (GAIN), IG US / tastyfx, and Interactive Brokers
 - Sizing granularity is the deciding constraint at the $250 tier: sub-1,000-unit orders are required for small risk at wide stops, and among US brokers effectively only OANDA offers 1-unit granularity plus a public REST API (v20). **[D-1 ratified 2026-07-29: OANDA US confirmed as the audit's working target.]**
@@ -1255,7 +1256,7 @@ No live activation until all critical tests pass.
 - Weekly limits (ISO-week boundary in Europe/London) (R: N-2)
 - Drawdown-state transitions and per-state permission sets (R: N-4)
 - DST logic, including: session boundaries equal 08:00/10:30/11:00 Europe/London on 2026-03-15 and 2026-10-28 (DST-divergence weeks) (R: C-2)
-- Margin-feasibility overlay and per-tier minimum stop distances (R: C-1)
+- Margin-feasibility overlay and per-tier minimum stop distances, computed from per-instrument margin rates (R: C-1)
 - Pending-promotion approval flow, including lapse and re-arm (R: C-3)
 - Candidate expiration
 - Configuration schema
@@ -1605,6 +1606,7 @@ Amendments applied per the design review `docs/reviews/2026-07-29-master-handoff
 | §21 | New unit and acceptance tests for the above | C-1, C-2, C-3, N-2, N-4, M-4 |
 | §24 | Configuration keys for all of the above; London-anchored session block | C-2, C-3, N-1, N-2, N-4 |
 | §26 | Cost estimate must include cost-vs-plausible-return comparison | O-2 |
+| §3.2, §16, §21 | v1.1.1: margin overlay computed from per-instrument broker margin rates; live re-audit gate before Phase 7 recorded (audit finding F-1: GBP_USD 5% vs account-level 2%) | C-1 |
 
 ## 28.2 Owner decisions — ratified 2026-07-29
 

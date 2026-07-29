@@ -106,7 +106,17 @@ def main() -> int:
                 f"{name}: 1-unit granularity (deciding constraint, §16 annex)",
                 min_size <= 1 and precision == 0,
                 f"minimumTradeSize={min_size} tradeUnitsPrecision={precision} "
-                f"pipLocation={inst.get('pipLocation')} marginRate={inst.get('marginRate')}",
+                f"pipLocation={inst.get('pipLocation')}",
+            )
+        )
+        inst_rate = float(inst.get("marginRate") or 0)
+        stricter = inst_rate > margin_rate > 0
+        checks.append(
+            (
+                f"{name}: per-instrument margin rate recorded (governs sizing, audit F-1)",
+                inst_rate > 0,
+                f"marginRate={inst_rate} (leverage {1 / inst_rate:.0f}:1)"
+                + (" — STRICTER than account-level; sizing must use this rate" if stricter else ""),
             )
         )
 
