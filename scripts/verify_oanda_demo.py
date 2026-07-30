@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from trading_firm.env_file import load_env_file  # noqa: E402
 from trading_firm.execution.credentials import (  # noqa: E402
     CredentialError,
     configured_account_id,
@@ -46,8 +47,10 @@ def get(token: str, path: str):
 
 
 def main() -> int:
-    # Preflight before any request, so a placeholder is reported as a
-    # placeholder instead of arriving as a 401 that reads like a bad token.
+    # Load an untracked .env first (§17; exported vars still win), THEN
+    # preflight — so a placeholder is reported as a placeholder instead of
+    # arriving as a 401 that reads like a bad token.
+    load_env_file()
     try:
         token = practice_token()
         pinned_account = configured_account_id()

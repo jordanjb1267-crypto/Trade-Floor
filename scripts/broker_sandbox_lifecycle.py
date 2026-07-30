@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from trading_firm.env_file import load_env_file  # noqa: E402
 from trading_firm.execution.adapter import BrokerAuthError  # noqa: E402
 from trading_firm.execution.credentials import CredentialError  # noqa: E402
 from trading_firm.execution.oanda_transport import OandaPracticeTransport  # noqa: E402
@@ -42,6 +43,8 @@ def main() -> int:
     if "--confirm-demo-order" not in sys.argv:
         print("Refusing to run: pass --confirm-demo-order to place a 1-unit demo order.")
         return 2
+
+    load_env_file()  # §17: an untracked .env is read; exported vars still win
 
     checks: list[tuple[str, bool, str]] = []
     # A credential problem is a refusal, not a crash: it is reported in the
