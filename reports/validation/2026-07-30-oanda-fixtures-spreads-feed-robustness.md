@@ -103,3 +103,17 @@ conservative sizing is the correct side to err on (§3).
   framework work, not a strategy test.
 - Nothing here is validation; sample sizes remain far below every §12.6
   threshold (§0.5).
+
+## Postscript (2026-07-30, later): fixtures extended backward
+
+The two July-only fixtures this report measured were superseded on this
+branch by extended files mirroring the FMP series' per-instrument coverage:
+
+- `data/research/GBP_USD_M5_oanda_practice_2026-03-30_2026-07-29.json`
+  (25,337 candles; 6 quality events, all Sunday-open gaps)
+- `data/research/EUR_USD_M5_oanda_practice_2026-06-08_2026-07-29.json`
+  (10,943 candles; 1 quality event)
+
+The extended files were verified to contain every candle of the originals
+with identical values, so all measurements above remain reproducible by
+restricting to the 2026-07-01…29 window. Nothing above is re-stated.

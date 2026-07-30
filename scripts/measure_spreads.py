@@ -10,7 +10,7 @@ currently a flat 2.0 pips (config/base/firm.yaml).
 
 Usage:
     python3 scripts/measure_spreads.py \
-        data/research/GBP_USD_M5_oanda_practice_2026-07-01_2026-07-29.json
+        data/research/GBP_USD_M5_oanda_practice_2026-03-30_2026-07-29.json
 
 Practice-feed caveat (F-5): spreads here are usable for modeling; fills and
 slippage are not represented. NOT validation (§12.4).
