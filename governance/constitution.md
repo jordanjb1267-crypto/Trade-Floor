@@ -1,7 +1,7 @@
 # Constitution
 
 The firm's constitution is the governing specification:
-**`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.1.0.md`**.
+**`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.2.0.md`**.
 This file is a pointer and amendment ledger, not a restatement — one source
 of truth, no divergence.
 
@@ -17,10 +17,15 @@ of truth, no divergence.
 6. Immutable audit trail for every material decision.
 7. No unilateral production changes; tier promotions and live permissions
    require explicit owner approval (D-2, §12.5).
+8. Evidence classification is a pure function of the market, never of the
+   firm's position relative to any aspiration. Within that constraint the
+   firm claims the evidence it holds: under-claiming is a calibration error
+   scored like over-claiming (A-2, §5.1, §6.6). Principle 5 takes
+   precedence wherever the two appear to conflict.
 
 ## Amendment process
 
-A spec change requires: a version bump, a row in the spec's §29.1
+A spec change requires: a version bump, a row in the spec's §29
 changelist, a dated entry in `governance/decision-log.md`, and — for any
 change that weakens a control or grants a permission — explicit owner
 approval recorded in `governance/approvals/`. Corrections driven by audit
@@ -40,3 +45,4 @@ including a superseded finding preserved unedited per §0.11).
 | v1.1.4 | 2026-07-30 | A-1: §12.7 mandatory adversarial review of research code |
 | v2.0.0 | 2026-07-30 | Owner-supplied adaptive rewrite (senior-trader pair, novelty/evidence classes); drafted from v1.0.0 |
 | v2.1.0 | 2026-07-30 | v2.0.0 + the seven protections it omitted, restored (§29) |
+| v2.2.0 | 2026-07-30 | A-2: conviction discipline — pressure invariance (§5.1) and symmetric scoring of under-classification (§6.6) |

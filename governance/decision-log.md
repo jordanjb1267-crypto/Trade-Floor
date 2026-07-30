@@ -688,8 +688,69 @@ risk limit, evidence threshold, or promotion gate flexes for a calendar date.
 No configuration or code change follows from this entry; it exists so a future
 session reading the earlier framing does not infer license to trade harder.
 
-**Standing owner to-dos:** none outstanding. Next action is owner-side:
-begin Phase 6 shadow operation on the trading laptop when ready (§22, §13).
+**2026-07-30 · A-2 ratified: conviction discipline. Spec v2.1.0 -> v2.2.0
+(owner).** The owner directed a refinement of the goal framing recorded in the
+entry above: agents "should be encouraged to trade harder with achieving the
+goal in mind when they have found an edge in sessions. Never just blindly out
+of pressure of reaching a target." The implementer proposed A-2 in
+`docs/design/2026-07-30-v2-pass-2-scope.md`; the owner ratified it, and set the
+Pass 2 agent roster at nine files.
+
+The design problem is that conviction-driven and pressure-driven sizing produce
+the same action. They are distinguishable only by their inputs, so A-2
+separates them by input class rather than by instruction. Evidence — a function
+of the market: evidence and novelty class, registry feature values, analog
+statistics, regime fit, execution conditions — may raise the ceiling the risk
+gate considers. Firm state — a function of us: equity, elapsed days, session
+and cumulative P&L, trades taken, time left in the window — may only lower it.
+That reduces the owner's distinction to a property test: classification must be
+a pure function of the Market State Packet, bit-identical across firm states
+including one far behind any aspiration. §21 now requires it as both a unit
+test and an acceptance criterion. §6A's packet mixes the two classes, so Pass 2
+splits it into MarketState and FirmState under one checksum, with the
+classifier signature admitting only the former — the M-1 move that made
+tier-raising unrepresentable rather than merely prohibited.
+
+The reach half was the part that needed building, because the firm's incentive
+gradient was one-sided. Over-sizing is already structurally impossible: the
+risk engine only ever lowers a tier, `TierAdjustment.adjustment` is
+`Field(le=0)`, and `profit_target: None` is a type, so the firm cannot
+represent a target and cannot compute that it is behind one. Under-sizing was
+invisible — holding E5 evidence and filing E3 produced no error, no audit
+anomaly, and no scored penalty, while §6.6 forbade only the mirror failure of
+rewarding more trades. Free caution is not neutral; it is a systematic negative
+bias on expectancy that nothing detected. A-2 scores under-classification
+symmetrically with over-classification, adds a `thesis_ceiling` audit field so
+the record distinguishes a gate-bound decision from a thesis-bound one, and
+fences the expectation with five absolute bounds: a correct no-trade is never a
+miss, a correct NOT_APPLICABLE is never a miss, uncertainty resolves downward,
+scoring is post-session only (an in-session signal would itself be a pressure
+input), and classification stays pressure-invariant.
+
+Recorded explicitly because the entry above closes with the line that a future
+session must not infer license to trade harder. A-2 refines that entry and does
+not reverse it. It grants no permission and adds no input to the risk gate:
+`risk/engine.py` is unchanged. It unlocks nothing at ratification, since all
+three manifests carry `risk_permissions` false, so the route to larger size
+runs through §12.5 promotion and the §12.6 thresholds and nowhere else. §3.5,
+§0 rule 6, and §0 rule 7 take precedence wherever they and §6.6 appear to
+conflict, and that precedence is written into the spec text rather than left to
+inference. v2.2.0 tags A-2 inline in §3.5, §5.1, §6.6, §21, §25 and records it
+in §29; a diff against v2.1.0 shows no provision removed from §0-§28. v2.1.0 is
+preserved unedited (§0.11).
+
+Roster decision: nine agent files, not the §6 roster of twenty-one — the
+existing six rewritten against v2.2.0 plus Alpha, Beta, and the Arbiter, with
+§6.4/§6.5 roles staying consolidated into Chief Quant and Context Analyst. A
+deliberate deviation from the §6 letter in service of §6's own instruction to
+"use the smallest number of high-quality agents that produces genuine
+specialization" and not to "create agents merely to simulate a large firm".
+
+**Standing owner to-dos:** none outstanding. Implementer is building v2
+Adoption Pass 2 in the order set in `docs/design/2026-07-30-v2-pass-2-scope.md`
+part 5 (W1 packet, W8 adaptive policy manifest, then the agent layer). Owner-side
+next action remains Phase 6 shadow operation on the trading laptop when ready
+(§22, §13).
 Before any new strategy research, note that §12.4's multiple-testing ledger
 against the GBP sample already carries a breakout baseline, three spent
 exit-variant tests, and one first look each for sweep-reversal and

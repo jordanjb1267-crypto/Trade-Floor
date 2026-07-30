@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GOVERNING = ROOT / "docs" / "spec" / "CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.1.0.md"
+GOVERNING = ROOT / "docs" / "spec" / "CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.2.0.md"
 
 # Paths whose §-citations are historical statements, not live claims.
 SKIP_PREFIXES = (
