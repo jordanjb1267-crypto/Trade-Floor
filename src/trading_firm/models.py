@@ -105,6 +105,12 @@ class Candidate:
     news_state_known: bool
     stop_broker_compatible: bool
     human_approval: bool = False
+    # A-2 (§5.1, §6.6): the tier ceiling the thesis's own novelty x evidence
+    # classification permits, from classification.Classification.max_edge_tier.
+    # None for a candidate produced by a named strategy rather than an adaptive
+    # thesis. The risk engine may only LOWER the tier with it — a thesis cannot
+    # raise what the evidence score set (§5.2).
+    thesis_ceiling: EdgeTier | None = None
 
     def stop_distance(self) -> Decimal:
         distance = abs(self.entry_price - self.stop_price)
@@ -153,6 +159,14 @@ class RiskDecision:
     reasons: tuple[str, ...]
     candidate_key: str
     binding_constraint: str | None = None
+    # A-2 / §25: the audit record must distinguish a GATE-bound decision from a
+    # THESIS-bound one. `binding_constraint` already names which capacity bound
+    # the dollar amount; these two name what bound the TIER. Without them a
+    # trader that under-classified its own opportunity is indistinguishable from
+    # one the risk engine correctly restrained, which is precisely the case A-2
+    # exists to make visible.
+    thesis_ceiling: EdgeTier | None = None
+    tier_bound_by: str | None = None
 
 
 @dataclass(frozen=True)
