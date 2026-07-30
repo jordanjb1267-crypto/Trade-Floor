@@ -24,7 +24,7 @@ Run a replay:
 
 ```bash
 python3 scripts/run_replay.py \
-    data/research/GBPUSD_M5_london_sessions_2026-06-08_2026-07-29_nytz.json GBP_USD 0.05
+    data/research/GBPUSD_M5_london_sessions_2026-03-30_2026-07-29_nytz.json GBP_USD 0.05
 python3 scripts/run_replay.py \
     data/research/EURUSD_M5_london_sessions_2026-06-08_2026-07-29_nytz.json EUR_USD 0.02
 ```
