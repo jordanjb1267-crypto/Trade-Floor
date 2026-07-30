@@ -166,3 +166,120 @@ placeholder. `OANDA_DEMO_ACCOUNT_ID` is optional — leave it unset to use the
 first account on the token, or pin a real account id; the placeholder must be
 removed either way. Network access no longer needs arranging. Re-run the exact
 command above and append a third section — do not edit either attempt (§0.11).
+
+---
+
+# Attempt 3 — PASSED, 2026-07-30 (attempts 1–2 above are unedited, §0.11)
+
+| | |
+|---|---|
+| **Environment** | Claude Code remote VM, branch `claude/oanda-token-env-f7asv9` |
+| **Trigger** | Owner reported "token has been inserted" |
+| **Method** | `scripts/broker_sandbox_lifecycle.py --confirm-demo-order` |
+| **Account** | `101-001-…-001` (fxTrade Practice, USD) — redacted per §17 |
+| **Result** | **PASSED — 6/6 lifecycle checks.** Order placed, broker-held stop verified active, trade closed, account confirmed flat. |
+
+**Phase 4's outstanding demo lifecycle test is complete.**
+
+## Credential caveat — disclosed, because it affects reproducibility
+
+`OANDA_DEMO_API_TOKEN` did not hold a bare token. It held a valid 65-character
+token, a space, and then the fragment `OANDA_DEMO_ACCOUNT_ID=<id>` — two
+settings collapsed into one value, with the account variable's old placeholder
+glued onto the end. `OANDA_DEMO_ACCOUNT_ID` itself was unset.
+
+The new preflight caught it before any request:
+
+```
+FAIL: OANDA_DEMO_API_TOKEN contains whitespace, so it cannot be a valid
+      credential (§17). Nothing was sent.
+```
+
+This run was therefore performed with the token **extracted in-process for the
+duration of the command** (`.split()[0]`), never written to disk, never placed
+on a command line, and never committed. The environment variable itself is
+still malformed and must be corrected by the owner before an unassisted re-run
+will work. No repair heuristic was added to the scripts: silently trimming a
+credential would mask exactly this class of paste error.
+
+Whether the inserted token is the **rotated** one or the chat-exposed token
+from setup cannot be determined from this side; the rotation to-do stays open
+until the owner confirms it.
+
+## Connection audit (`verify_oanda_demo.py`) — 11/11
+
+```
+PASS   API reachable, token accepted (practice)      api-fxpractice.oanda.com
+PASS   Account currency is USD                       currency=USD
+PASS   Margin rate consistent with US 50:1 cap       marginRate=0.02 (50:1)
+PASS   Equity endpoint returns balance/NAV           balance=100000.0000 NAV=100000.0000
+PASS   Hedging disabled (NFA FIFO expectation)       hedgingEnabled=False
+PASS   GBP_USD: 1-unit granularity                   minimumTradeSize=1.0 precision=0
+PASS   GBP_USD: per-instrument margin rate           marginRate=0.05 (20:1) — STRICTER
+PASS   EUR_USD: 1-unit granularity                   minimumTradeSize=1.0 precision=0
+PASS   EUR_USD: per-instrument margin rate           marginRate=0.02 (50:1)
+PASS   GBP_USD: live pricing, spread sane            bid=1.34703 ask=1.34720 spread=1.7 pips
+PASS   EUR_USD: live pricing, spread sane            bid=1.15274 ask=1.15288 spread=1.4 pips
+```
+
+**Audit F-1 re-confirmed against the live practice account:** GBP_USD's
+per-instrument margin rate is **5%**, stricter than the account-level 2%.
+Sizing must use the per-instrument rate (§3.2); an account-level assumption
+would oversize GBP_USD by 2.5×.
+
+## Lifecycle run — 6/6, executed 2026-07-30T17:59:07Z
+
+```
+PASS   account reachable                          balance=100000.0000
+PASS   pricing fetched                            bid=1.15268
+PASS   1-unit market order filled
+PASS   broker-held stop confirmed active (§0.9)   state=PENDING price=1.14768
+PASS   trade closed
+PASS   account flat after lifecycle
+
+6/6 lifecycle checks passed.
+```
+
+Trade detail, read back independently after the run:
+
+| Field | Value |
+|---|---|
+| Trade id | 5 |
+| Instrument / units | EUR_USD / 1 (long) |
+| Open price | 1.15291 |
+| Close price | 1.15276 |
+| Realized P&L | −0.0002 USD (the spread, as expected on 1 unit) |
+| State | CLOSED |
+| Stop order | id 6, `STOP_LOSS`, price 1.14768, GTC, `TOP_OF_BOOK`, state `PENDING` while open |
+
+**Post-run account state, verified by a separate call:** `openTradeCount=0`,
+`openPositionCount=0`, `pendingOrderCount=0`, `unrealizedPL=0.0000`,
+balance 99999.9998. `open_trade_ids()` returned the empty set.
+
+## What this validates
+
+| Property | Evidence |
+|---|---|
+| Order submission reaches the practice broker | fill transaction returned, trade id issued |
+| Stop is **broker-held**, not local (§0.9) | `STOP_LOSS` order object exists server-side in `PENDING` |
+| Stop attaches on fill, not as a later leg | present on the trade at first read-back |
+| Close path works | close fill returned, trade `CLOSED` |
+| No residual state | three independent counters at zero |
+| 1-unit granularity is real | a 1-unit order filled, confirming the §16 annex constraint |
+
+Rollover was not a factor (§14, audit F-5): the position opened and closed
+within roughly three seconds at 17:59 UTC, nowhere near the 21:00 UTC boundary.
+
+This is a **transport** validation — order mechanics only. It says nothing
+about fill quality, strategy edge, or §13 promotion readiness, and it places no
+trade through the §2 candidate path. `live_allowed` remains empty everywhere.
+
+## §17 gap found and closed during this run
+
+The script's PASS lines print raw broker responses, and every OANDA
+transaction envelope echoes `accountID` — so the unredacted account id went to
+stdout, and would have gone into this record verbatim.
+`verify_oanda_demo.py` had redacted account ids since Phase 0; the lifecycle
+script had not. It now applies the same redaction, pinned by two tests (one
+that the id is scrubbed, one that prices and trade ids survive — redaction that
+ate them would make the evidence unverifiable).

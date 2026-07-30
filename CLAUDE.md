@@ -9,12 +9,13 @@ All §-references in this repo point there. When this file and the spec
 disagree, the spec wins.
 
 **Current status:** Phases 1–5 delivered (governance, deterministic core,
-research framework, broker sandbox, agent orchestration); Phase 4's practice
-order-lifecycle run remains outstanding. It needs a **real, rotated** fxTrade
-Practice token in `OANDA_DEMO_API_TOKEN` — network access to the practice host
-is confirmed working, and the scripts now refuse placeholder values outright,
-so setting the variable to `.env.example`'s `<practice token>` does not satisfy
-this. No trading system is live. `live_allowed` is empty everywhere
+research framework, broker sandbox, agent orchestration). Phase 4's practice
+order-lifecycle run **passed on 2026-07-30** — 11/11 connection checks and 6/6
+lifecycle checks against fxTrade Practice, with the broker-held stop confirmed
+server-side and the account verified flat afterwards
+(`docs/audits/2026-07-30-practice-order-lifecycle.md`, attempt 3). That
+validates order *mechanics* only, not fill quality or edge. No trading system
+is live. `live_allowed` is empty everywhere
 and stays empty until the promotion process completes with owner approval
 (§12.5, §24).
 

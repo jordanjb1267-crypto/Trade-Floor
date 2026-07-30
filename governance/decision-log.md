@@ -463,12 +463,49 @@ Phase 4's lifecycle run remains outstanding. Evidence appended as attempt 2 to
 `docs/audits/2026-07-30-practice-order-lifecycle.md`; attempt 1 unedited
 (§0.11).
 
+**2026-07-30 · Phase 4 demo order-lifecycle test PASSED — the §22 Phase 4
+deliverable is complete.** With a real token supplied, `verify_oanda_demo.py`
+returned **11/11** and `broker_sandbox_lifecycle.py --confirm-demo-order`
+returned **6/6** on practice account `101-001-…-001` at 17:59:07Z: a 1-unit
+EUR_USD order filled (open 1.15291), the broker-held stop was confirmed active
+server-side (`STOP_LOSS` id 6 at 1.14768, GTC, state PENDING) rather than held
+locally (§0.9), the trade closed (1.15276, realized −0.0002 USD — the spread),
+and three independent counters confirmed the account flat
+(`openTradeCount`/`openPositionCount`/`pendingOrderCount` all 0). Opened and
+closed within ~3s, far from the 21:00 UTC rollover (§14, F-5). **Audit F-1
+re-confirmed live:** GBP_USD's per-instrument margin rate is 5% against the
+account's 2%, so sizing on the account rate would oversize GBP_USD by 2.5×
+(§3.2). This validates order *mechanics* only — nothing about fill quality,
+edge, or §13 promotion readiness; no trade went through the §2 candidate path
+and `live_allowed` stays empty everywhere.
+
+Two things worth recording. (1) **Credential handling.**
+`OANDA_DEMO_API_TOKEN` arrived holding a valid 65-char token, a space, and the
+fragment `OANDA_DEMO_ACCOUNT_ID=<id>` — two settings collapsed into one value.
+The preflight added earlier the same day caught it ("contains whitespace…
+Nothing was sent") instead of sending a mangled header. The run used the token
+extracted in-process for that command only; it was never written to disk, put
+on a command line, or committed, and the variable itself still needs fixing.
+No trimming heuristic was added to the scripts — silently repairing a
+credential would mask exactly this paste error. Whether the supplied token is
+the rotated one or the chat-exposed one cannot be determined from this side,
+so the rotation to-do stays open. (2) **§17 gap closed.** The lifecycle
+script printed raw broker responses, and every OANDA transaction envelope
+echoes `accountID`, so an unredacted account id reached stdout and would have
+entered the audit record verbatim; `verify_oanda_demo.py` has redacted since
+Phase 0. The script now applies the same redaction, pinned by two tests
+(scrubbed id; prices and trade ids preserved, since redaction that ate them
+would make evidence unverifiable). Suite: 275 → 277. Evidence appended as
+attempt 3 to `docs/audits/2026-07-30-practice-order-lifecycle.md`; attempts 1
+and 2 unedited (§0.11).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
-passed through chat during setup; run scripts/broker_sandbox_lifecycle.py —
-network access **confirmed working 2026-07-30** (attempt 2), so the sole
-remaining prerequisite is a **rotated** practice token in
-`OANDA_DEMO_API_TOKEN` (untracked `.env` or session environment; see
-`.env.example`) replacing the placeholder currently there —
-`OANDA_DEMO_ACCOUNT_ID` is optional but must not stay a placeholder; extend
-the OANDA broker-feed fixtures backward (Apr–Jun) before any new strategy
-research spends a §12.4 test.
+passed through chat during setup, and **confirm whether the token supplied on
+2026-07-30 was the rotated one** — it cannot be told apart from this side;
+repair `OANDA_DEMO_API_TOKEN`, which currently holds the token with
+`OANDA_DEMO_ACCOUNT_ID=<id>` concatenated onto it (set it to the bare token;
+leave `OANDA_DEMO_ACCOUNT_ID` unset to use the first account on the token, or
+pin a real account id) so the lifecycle script runs unassisted; extend the
+OANDA broker-feed fixtures backward (Apr–Jun) before any new strategy research
+spends a §12.4 test. **Cleared 2026-07-30:** OANDA network access and the
+Phase 4 demo lifecycle run.

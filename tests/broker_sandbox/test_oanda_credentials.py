@@ -8,9 +8,11 @@ ordinary body and then read as a valid-but-empty account list.
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import json
 import urllib.error
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +25,16 @@ from trading_firm.execution.credentials import (
     practice_token,
 )
 from trading_firm.execution.oanda_transport import OandaPracticeTransport
+
+
+def _load_lifecycle_script():
+    """Import the lifecycle script by path — it lives in scripts/, not on the
+    package path."""
+    path = Path(__file__).resolve().parents[2] / "scripts" / "broker_sandbox_lifecycle.py"
+    spec = importlib.util.spec_from_file_location("_lifecycle_script", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture(autouse=True)
@@ -196,3 +208,26 @@ def test_explicit_argument_outranks_the_env_pin(monkeypatch):
     monkeypatch.setenv(ACCOUNT_VAR, "001-001-7654321-002")
     transport = OandaPracticeTransport(account_id="001-001-1111111-003")
     assert transport._account_id == "001-001-1111111-003"
+
+
+# --------------------------------------------------------- §17 redaction
+
+
+def test_lifecycle_output_redacts_account_ids():
+    """Broker responses echo accountID in every transaction envelope, so the
+    lifecycle script's detail strings would otherwise write it into an audit
+    record. verify_oanda_demo.py already redacts; this closes the gap."""
+    # Synthetic account id — a real one must never be committed, not even as a
+    # fixture in the test that exists to keep real ones out of the record.
+    raw = "{'orderCreateTransaction': {'id': '4', 'accountID': '101-001-12345678-001'}}"
+    scrubbed = _load_lifecycle_script().redact(raw)
+
+    assert "12345678" not in scrubbed
+    assert "101-001-…-001" in scrubbed  # shape preserved for audit correlation
+
+
+def test_redaction_leaves_prices_and_ids_intact():
+    """Redaction must not eat trade ids, prices, or timestamps — the evidence
+    would stop being verifiable."""
+    detail = "stop={'id': '6', 'tradeID': '5', 'price': '1.14768', 'state': 'PENDING'}"
+    assert _load_lifecycle_script().redact(detail) == detail
