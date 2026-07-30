@@ -61,6 +61,25 @@ detection; SQLite/WAL migration layer with the first decision-trail schema.
 104 unit tests pass, including F-1 golden numbers (GBP_USD exceptional
 margin-capacity $2.81 vs EUR_USD $8.22 at a 25-pip stop on $250).
 
+**2026-07-30 · Phase 3 framework delivered (owner instruction "continue").**
+Data and strategy research framework per §22: market-data normalization
+(FMP/OANDA adapters, mandatory explicit source timezone, duplicate/gap/
+malformed-bar quality events); versioned feature engine (session_features_v1:
+Asian range, pre-London compression) with a no-future-leakage boundary test;
+§11 strategy-manifest schema whose validators refuse risk permissions without
+promotion, live status without a signed promotion record, and paper status
+without a validation record; three research manifests (london_breakout 0.1.0
+with implemented rule logic; sweep-reversal and continuation declared for the
+research queue); and a historical replay engine that runs the REAL risk and
+sizing engines per session with conservative same-bar-stop fills, spread
+costs, and the inviolate 11:00 flatten. 130 tests pass; replay goldens
+confirm a stopped trade loses exactly the approved risk after costs.
+Data note: the upgraded FMP connector was unavailable this session, so
+framework verification used engineered synthetic sessions; real-history
+backtests await the connector or the F-4/F-5 historical tick-source decision
+(Phase 3 remaining item). No validation claims are made (§12.4, §12.6).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
-`main`.
+`main`; re-enable the upgraded FMP connector (or select the historical tick
+source) for real-data backtesting.

@@ -26,4 +26,11 @@ pip install -e ".[dev]" && pytest && ruff check src tests scripts
 - [`src/trading_firm/risk/`](src/trading_firm/risk/) — capital manager (§4: drawdown states, owner-approved promotions) and the risk engine (§3.3 minimum over five capacities, per-instrument margin — F-1)
 - [`src/trading_firm/sizing/engine.py`](src/trading_firm/sizing/engine.py) — stop-first sizing, spread-inclusive, round-down, margin defense-in-depth
 - [`src/trading_firm/audit/`](src/trading_firm/audit/) — hash-chained append-only log + SQLite/WAL migrations ([`database/migrations/`](database/migrations/))
-- 104 unit tests (`tests/unit/`), incl. audited golden numbers and DST-divergence dates
+
+## Phase 3 — data & strategy research framework
+
+- [`src/trading_firm/market_data/bars.py`](src/trading_firm/market_data/bars.py) — normalization (FMP/OANDA adapters, explicit source timezones, quality events)
+- [`src/trading_firm/features/engine.py`](src/trading_firm/features/engine.py) — versioned session features, no future leakage
+- [`src/trading_firm/strategies/`](src/trading_firm/strategies/) — §11 manifest schema (permissions follow promotion) + london_breakout v0.1.0 rules; manifests in [`config/research/strategies/`](config/research/strategies/)
+- [`src/trading_firm/research/replay.py`](src/trading_firm/research/replay.py) — session replay through the real risk/sizing engines; conservative fills; inviolate flatten
+- 130 unit tests (`tests/unit/`), incl. audited golden numbers, DST-divergence dates, and exact replay P&L

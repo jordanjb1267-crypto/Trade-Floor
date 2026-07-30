@@ -1,0 +1,279 @@
+"""Historical replay engine (§12.2), research environment only.
+
+Replays sessions bar-by-bar through the REAL pipeline: feature engine →
+strategy rules → deterministic risk engine → sizing engine → simulated
+execution with spread costs → mandatory flatten. No orders exist here
+(§12.1); fills are simulated conservatively (same-bar stop priority).
+
+Metrics from this engine are framework outputs, NOT validation: §12.4 and
+the §12.6 minimum-evidence table govern what any number here may be used for.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import enum
+from dataclasses import dataclass
+from decimal import ROUND_FLOOR, Decimal
+
+from trading_firm.config import FirmConfig
+from trading_firm.features.engine import session_features
+from trading_firm.market_data.bars import BarSeries
+from trading_firm.models import (
+    AccountState,
+    Candidate,
+    Direction,
+    InstrumentSpec,
+    cents,
+)
+from trading_firm.risk.engine import RiskEngine
+from trading_firm.sessions.clock import SessionClock
+from trading_firm.sizing.engine import size_position
+from trading_firm.strategies.breakout import BreakoutParams, first_breakout_signal
+from trading_firm.strategies.manifest import StrategyManifest
+
+CENT = Decimal("0.01")
+RESEARCH_BASELINE_SCORE = 75  # fixed Standard-tier baseline until §12.6 calibration exists
+
+
+class SessionStatus(enum.Enum):
+    TRADED = "TRADED"
+    NO_FEATURES = "NO_FEATURES"
+    NO_SIGNAL = "NO_SIGNAL"
+    REJECTED = "REJECTED"
+
+
+class TradeOutcome(enum.Enum):
+    TARGET = "TARGET"
+    STOP = "STOP"
+    FLATTENED = "FLATTENED"
+
+
+@dataclass(frozen=True)
+class SessionTrade:
+    direction: Direction
+    units: int
+    entry_ts: dt.datetime
+    entry_price: Decimal
+    exit_ts: dt.datetime
+    exit_price: Decimal
+    outcome: TradeOutcome
+    allowed_risk_usd: Decimal
+    pnl_usd: Decimal
+
+
+@dataclass(frozen=True)
+class SessionOutcome:
+    session_date: dt.date
+    status: SessionStatus
+    trade: SessionTrade | None = None
+    reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ReplayReport:
+    strategy_id: str
+    strategy_version: str
+    feature_version: str
+    sessions: int
+    traded: int
+    wins: int
+    losses: int
+    flat_exits: int
+    net_pnl_usd: Decimal
+    gross_win_usd: Decimal
+    gross_loss_usd: Decimal
+    max_drawdown_usd: Decimal
+    outcomes: tuple[SessionOutcome, ...]
+    disclaimer: str = (
+        "Framework replay output — NOT validation. §12.4 anti-overfitting protocol and "
+        "§12.6 minimum-evidence thresholds govern any use of these numbers."
+    )
+
+    @property
+    def expectancy_usd(self) -> Decimal | None:
+        if self.traded == 0:
+            return None
+        return (self.net_pnl_usd / self.traded).quantize(CENT)
+
+    @property
+    def profit_factor(self) -> Decimal | None:
+        if self.gross_loss_usd == 0:
+            return None
+        return (self.gross_win_usd / self.gross_loss_usd).quantize(CENT)
+
+
+def _pnl(direction: Direction, units: int, entry: Decimal, exit_price: Decimal) -> Decimal:
+    move = exit_price - entry if direction is Direction.LONG else entry - exit_price
+    return (units * move).quantize(CENT, rounding=ROUND_FLOOR)  # conservative both ways
+
+
+def replay_session(
+    series: BarSeries,
+    session_date: dt.date,
+    *,
+    config: FirmConfig,
+    clock: SessionClock,
+    engine: RiskEngine,
+    manifest: StrategyManifest,
+    spec: InstrumentSpec,
+    equity: Decimal = Decimal("250"),
+    spread_pips: Decimal = Decimal("2.0"),
+) -> SessionOutcome:
+    if manifest.strategy_id != "london_breakout":
+        raise NotImplementedError(f"no replay rules implemented for {manifest.strategy_id}")
+
+    features = session_features(series, session_date, clock, spec.pip_size)
+    if features is None:
+        return SessionOutcome(session_date, SessionStatus.NO_FEATURES)
+
+    boundaries = clock.boundaries(session_date)
+    active_bars = series.between(boundaries["activation"], boundaries["entry_cutoff"])
+    signal = first_breakout_signal(
+        features, active_bars, BreakoutParams.from_manifest_params(manifest.params), spec.pip_size
+    )
+    if signal is None:
+        return SessionOutcome(session_date, SessionStatus.NO_SIGNAL)
+
+    trigger_bar = signal.triggered_by
+    candidate = Candidate(
+        instrument=spec.name,
+        strategy_id=manifest.strategy_id,
+        strategy_version=manifest.version,
+        direction=signal.direction,
+        entry_price=signal.trigger_price,
+        stop_price=signal.stop_price,
+        edge_score=RESEARCH_BASELINE_SCORE,
+        created_at=trigger_bar.ts,
+        expires_at=boundaries["entry_cutoff"],
+        data_fresh=True,
+        news_state_known=True,
+        stop_broker_compatible=True,
+    )
+    account = AccountState(closed_equity=equity, tier_anchor=Decimal("250"))
+    decision = engine.evaluate(candidate, account, spec, trigger_bar.ts)
+    if not decision.approved:
+        return SessionOutcome(session_date, SessionStatus.REJECTED, reasons=decision.reasons)
+
+    sizing = size_position(
+        candidate,
+        spec,
+        decision.allowed_risk_usd,
+        closed_equity=equity,
+        margin_utilization_cap_fraction=Decimal(
+            str(config.risk.margin_utilization_cap_fraction)
+        ),
+        spread_pips_assumption=spread_pips,
+    )
+    if not sizing.approved:
+        return SessionOutcome(session_date, SessionStatus.REJECTED, reasons=sizing.reasons)
+
+    half_spread = spread_pips / 2 * spec.pip_size
+    is_long = signal.direction is Direction.LONG
+    entry_exec = (
+        signal.trigger_price + half_spread if is_long else signal.trigger_price - half_spread
+    )
+
+    def exit_exec(mid: Decimal) -> Decimal:
+        return mid - half_spread if is_long else mid + half_spread
+
+    # Conservative simulation: same-bar stop priority, then remaining bars
+    # until the flatten boundary — which is inviolate (§14, F-5).
+    manage_bars = [
+        bar
+        for bar in series.between(trigger_bar.ts, boundaries["flatten"])
+        if bar.ts >= trigger_bar.ts
+    ]
+    exit_price: Decimal | None = None
+    exit_ts: dt.datetime | None = None
+    outcome: TradeOutcome | None = None
+    for bar in manage_bars:
+        stop_hit = bar.low <= signal.stop_price if is_long else bar.high >= signal.stop_price
+        target_hit = (
+            bar.high >= signal.target_price if is_long else bar.low <= signal.target_price
+        )
+        if stop_hit:  # worst case first
+            exit_price, exit_ts, outcome = exit_exec(signal.stop_price), bar.ts, TradeOutcome.STOP
+            break
+        if target_hit:
+            exit_price, exit_ts, outcome = (
+                exit_exec(signal.target_price),
+                bar.ts,
+                TradeOutcome.TARGET,
+            )
+            break
+    if outcome is None:
+        last_bar = manage_bars[-1]
+        exit_price, exit_ts, outcome = (
+            exit_exec(last_bar.close),
+            boundaries["flatten"],
+            TradeOutcome.FLATTENED,
+        )
+
+    trade = SessionTrade(
+        direction=signal.direction,
+        units=sizing.units,
+        entry_ts=trigger_bar.ts,
+        entry_price=entry_exec,
+        exit_ts=exit_ts,
+        exit_price=exit_price,
+        outcome=outcome,
+        allowed_risk_usd=decision.allowed_risk_usd,
+        pnl_usd=_pnl(signal.direction, sizing.units, entry_exec, exit_price),
+    )
+    return SessionOutcome(session_date, SessionStatus.TRADED, trade=trade)
+
+
+def replay_range(
+    series: BarSeries,
+    session_dates: list[dt.date],
+    *,
+    config: FirmConfig,
+    clock: SessionClock,
+    engine: RiskEngine,
+    manifest: StrategyManifest,
+    spec: InstrumentSpec,
+    equity: Decimal = Decimal("250"),
+    spread_pips: Decimal = Decimal("2.0"),
+) -> ReplayReport:
+    outcomes = [
+        replay_session(
+            series,
+            day,
+            config=config,
+            clock=clock,
+            engine=engine,
+            manifest=manifest,
+            spec=spec,
+            equity=equity,
+            spread_pips=spread_pips,
+        )
+        for day in session_dates
+    ]
+    trades = [o.trade for o in outcomes if o.trade is not None]
+    wins = [t for t in trades if t.pnl_usd > 0]
+    losses = [t for t in trades if t.pnl_usd < 0]
+
+    running = Decimal("0")
+    peak = Decimal("0")
+    max_dd = Decimal("0")
+    for trade in trades:
+        running += trade.pnl_usd
+        peak = max(peak, running)
+        max_dd = max(max_dd, peak - running)
+
+    return ReplayReport(
+        strategy_id=manifest.strategy_id,
+        strategy_version=manifest.version,
+        feature_version=manifest.features[0] if manifest.features else "",
+        sessions=len(outcomes),
+        traded=len(trades),
+        wins=len(wins),
+        losses=len(losses),
+        flat_exits=sum(1 for t in trades if t.outcome is TradeOutcome.FLATTENED),
+        net_pnl_usd=cents(sum((t.pnl_usd for t in trades), Decimal("0"))),
+        gross_win_usd=cents(sum((t.pnl_usd for t in wins), Decimal("0"))),
+        gross_loss_usd=cents(-sum((t.pnl_usd for t in losses), Decimal("0"))),
+        max_drawdown_usd=cents(max_dd),
+        outcomes=tuple(outcomes),
+    )
