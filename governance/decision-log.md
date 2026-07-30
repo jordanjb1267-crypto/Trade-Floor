@@ -79,7 +79,28 @@ framework verification used engineered synthetic sessions; real-history
 backtests await the connector or the F-4/F-5 historical tick-source decision
 (Phase 3 remaining item). No validation claims are made (§12.4, §12.6).
 
+**2026-07-30 · Phase 4 delivered (owner instruction "continue").** Broker
+sandbox integration per §22, built offline against a deterministic
+OANDA-v20-shaped fake broker (network to the practice host still unavailable
+in this session): order state machine with enforced transitions (a fill
+cannot close without the stop question answered; STOP_MISSING is a
+kill-switch state); deterministic broker adapter — the only order-capable
+component — which refuses unapproved risk/sizing inputs as order-path
+violations, refuses live transports at construction, revalidates price
+before submission (N-13), attaches the broker-held stop on fill (§0.9),
+submits idempotently via deterministic client ids, and resolves UNKNOWN
+timeouts by querying the broker (never blind resubmission); reconciler with
+broker-authoritative fail-closed semantics (position mismatch → HALTED,
+equity-only → MANAGE_ONLY); practice-only OANDA transport; failure-injection
+suite (timeout before/after landing, dropped stop, rejection, desync) and
+first §21 acceptance tests (no order bypasses the risk engine; no live
+transport; stop always attached; no duplicates). 157 tests pass. A guarded
+demo lifecycle script (scripts/broker_sandbox_lifecycle.py) awaits practice
+network access. An adversarial multi-agent review of the execution code was
+run; outcomes recorded in the PR.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; re-enable the upgraded FMP connector (or select the historical tick
-source) for real-data backtesting.
+source) for real-data backtesting; run scripts/broker_sandbox_lifecycle.py
+once OANDA network access exists (fresh VM or locally).

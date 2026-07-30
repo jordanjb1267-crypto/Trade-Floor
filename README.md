@@ -34,3 +34,11 @@ pip install -e ".[dev]" && pytest && ruff check src tests scripts
 - [`src/trading_firm/strategies/`](src/trading_firm/strategies/) — §11 manifest schema (permissions follow promotion) + london_breakout v0.1.0 rules; manifests in [`config/research/strategies/`](config/research/strategies/)
 - [`src/trading_firm/research/replay.py`](src/trading_firm/research/replay.py) — session replay through the real risk/sizing engines; conservative fills; inviolate flatten
 - 130 unit tests (`tests/unit/`), incl. audited golden numbers, DST-divergence dates, and exact replay P&L
+
+## Phase 4 — broker sandbox integration
+
+- [`src/trading_firm/execution/`](src/trading_firm/execution/) — order state machine, deterministic broker adapter (the only order-capable component: approved risk+sizing required, live transports refused, stop attached on fill, idempotent client ids, UNKNOWN resolved by query), fake broker with failure injection, practice-only OANDA transport
+- [`src/trading_firm/reconciliation/`](src/trading_firm/reconciliation/) — broker-authoritative reconciler; position mismatch → HALTED, equity-only → MANAGE_ONLY (§18)
+- [`tests/failure_injection/`](tests/failure_injection/) + [`tests/acceptance/`](tests/acceptance/) — §21 drills: timeouts, dropped stops, desync; no order bypasses the risk engine
+- [`scripts/broker_sandbox_lifecycle.py`](scripts/broker_sandbox_lifecycle.py) — guarded 1-unit demo order lifecycle against the practice account (requires network + token)
+- **157 tests total**
