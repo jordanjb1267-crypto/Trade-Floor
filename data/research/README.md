@@ -29,13 +29,16 @@ drives live behavior).
 
 ## `*_M5_oanda_practice_*.json`
 
-Committed coverage mirrors the FMP series per instrument: GBP_USD
-2026-03-30 → 2026-07-29 and EUR_USD 2026-06-08 → 2026-07-29 (full 24h
-UTC days, not trimmed to the London slice; the only quality events are
-10–15 min gaps at Sunday ~21:00 UTC weekend opens).
+Both instruments now cover the same span: **GBP_USD and EUR_USD
+2026-03-30 → 2026-07-29** (25,337 and 25,343 M5 candles), full 24h UTC
+days, not trimmed to the London slice. The only quality events are 10–15
+min gaps at Sunday ~21:00 UTC weekend opens (6 for GBP, 1 for EUR) —
+weekend-open illiquidity, not data defects. Unlike the FMP series these
+have no missing weekdays.
 
 Fetched by `scripts/fetch_oanda_candles.py` (read-only, practice host only,
-token via `OANDA_DEMO_API_TOKEN`). Shape: `{"meta": {...}, "candles": [...]}`
+token via `OANDA_DEMO_API_TOKEN`, read from the environment or an untracked
+`.env` — see `src/trading_firm/env_file.py`). Shape: `{"meta": {...}, "candles": [...]}`
 with raw OANDA mid/ask/bid blocks preserved — real measured spreads for
 research, unlike the FMP mid-only series. Timestamps are RFC3339 UTC from
 the API (no D-7 pinning question). Practice-feed caveat (F-5): usable for

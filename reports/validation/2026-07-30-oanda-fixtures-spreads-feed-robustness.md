@@ -131,3 +131,14 @@ branch by extended files mirroring the FMP series' per-instrument coverage:
 The extended files were verified to contain every candle of the originals
 with identical values, so all measurements above remain reproducible by
 restricting to the 2026-07-01…29 window. Nothing above is re-stated.
+
+## Postscript 2 (2026-07-30): EUR_USD extended to match GBP_USD
+
+The EUR_USD fixture named in the previous postscript was itself superseded:
+`data/research/EUR_USD_M5_oanda_practice_2026-03-30_2026-07-29.json`
+(25,343 candles; 1 quality event, the same Sunday-open gap). Verified a
+strict superset of the 2026-06-08 file — every candle present with
+identical values — before that file was removed. Both instruments now span
+2026-03-30 → 2026-07-29, so cross-pair work no longer has to restrict to
+EUR's shorter window. Measurements above remain reproducible on the
+2026-07-01…29 window; nothing above is re-stated.
