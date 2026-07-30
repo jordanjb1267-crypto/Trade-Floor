@@ -282,6 +282,28 @@ finding. Larger GBP trade count vs FMP (65 vs 48) reflects the broker
 feed's more complete session coverage. NOT validation; still below §12.6
 thresholds (§0.5).
 
+**2026-07-30 · asian_range_sweep_reversal v0.1.0 implemented; baseline
+replayed (headless session, owner authorization "continue completely
+headless").** The research queue's second strategy gained deterministic
+rule logic (sweep 3–25 pips beyond an Asian extreme, close back inside
+within 3 bars, stop beyond the sweep extreme, opposing-liquidity target;
+first-guess parameters declared in the manifest before any replay). Engine
+addition: entry-at-close signals start exit checks the bar after entry, so
+pre-entry price action can never exit a trade. The F-1 margin overlay binds
+these tighter-stop trades before the tier does — golden case: 16-pip stop
+margin-capped to $1.79 approved risk, stopped trade loses exactly that.
+Baseline on the canonical feed with measured costs: GBP_USD 27 trades
+12W/15L net +$1.48 PF 1.11 (flatten share 22% vs the champion's 79% —
+decision-driven exits); EUR_USD 3 trades in 45 sessions (no meaningful
+sample at these thresholds). Single pre-declared parameter set, no
+selection event → no §12.4 test spent; recorded as the strategy's single
+first look. NOT validation (§12.6); status research, permissions false.
+Suite: 219. Also this session: PR #3 merged after green CI; the Phase 4
+practice order-lifecycle run was delegated to a fresh session
+(practice-only guarded script) — its evidence will arrive on branch
+claude/practice-lifecycle-evidence. Report:
+`reports/validation/2026-07-30-sweep-reversal-v0.1.0-baseline.md`.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a
