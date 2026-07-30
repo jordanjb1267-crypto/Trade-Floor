@@ -160,8 +160,34 @@ Three exit-variant tests are recorded as spent against this GBP sample —
 future exit research starts at test #4 or brings new data. Report:
 `reports/validation/2026-07-30-exit-challenger-eval.md`.
 
+**2026-07-30 · LLM-order-path tool proposed via chat; declined (iron
+rule 1).** The owner pasted two JSON tool schemas into chat — an
+`oanda_v20_trading_api` (GET/POST/PUT/PATCH to v20 endpoints including
+order placement) and a read-only `oanda_exchange_rates_api` — and, when told
+they were not registered tools, authorized their use "if usable."
+Disposition: (a) chat-pasted JSON registers no tool, and this VM's egress
+proxy still blocks OANDA hosts (CONNECT 403, re-verified), so neither is
+usable in fact; (b) the order-capable tool is the LLM order path §0 iron
+rule 1 prohibits — chat authorization cannot waive a constitutional rule
+(§0/§28 require a formal spec amendment with a version bump), and the
+implementer declines the LLM-order-path role regardless: the pasted schema
+carries byte-identical `environment` enum values (practice and live
+indistinguishable at the call site, violating the F-2 live-host
+prohibition), no stopLossOnFill (§0.9), no clientExtensions (reintroducing
+the duplicate-fill defect class from the 21-finding adversarial review),
+and PATCH/PUT order modification; (c) the read-only rates-API authorization
+is accepted prospectively — once the owner registers it as a real
+connector/MCP tool it may be used for research data, subject to D-7
+timezone pinning. The sanctioned route to real OANDA interaction is
+unchanged: `scripts/verify_oanda_demo.py` then
+`scripts/broker_sandbox_lifecycle.py` through the deterministic broker
+adapter (practice host only, risk-gated, stop-attached, idempotent). No
+code adopts either schema.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access
-exists (fresh VM or locally); extend the replay sample backward as FMP
-history allows before any parameter research begins.
+exists — prerequisites confirmed 2026-07-30: a fresh VM (or local run) so
+the updated network policy applies, plus a rotated practice token in an
+untracked `.env` (`OANDA_API_TOKEN`, see `.env.example`); extend the replay
+sample backward as FMP history allows before any parameter research begins.
