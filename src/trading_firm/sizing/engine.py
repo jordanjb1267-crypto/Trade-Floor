@@ -30,9 +30,10 @@ def size_position(
     practice spreads (F-3/F-5) — so effective risk stays conservative until a
     live-calibrated cost model exists (§12.4).
     """
+    key = candidate.content_key()
     reasons: list[str] = []
     if allowed_risk_usd <= _ZERO:
-        return SizingResult(False, 0, _ZERO, _ZERO, ("no approved risk to size (§3.3)",))
+        return SizingResult(False, 0, _ZERO, _ZERO, ("no approved risk to size (§3.3)",), key)
 
     loss_per_unit = candidate.stop_distance() + spread_pips_assumption * spec.pip_size
     raw_units = allowed_risk_usd / loss_per_unit
@@ -46,7 +47,7 @@ def size_position(
             "broker minimum size exceeds approved risk at this stop distance: reject "
             "(§3.3/§8.1 reject_minimum_size_overrisk)"
         )
-        return SizingResult(False, 0, _ZERO, _ZERO, tuple(reasons))
+        return SizingResult(False, 0, _ZERO, _ZERO, tuple(reasons), key)
 
     margin_required = units_dec * candidate.entry_price * spec.margin_rate
     margin_budget = margin_utilization_cap_fraction * closed_equity
@@ -55,12 +56,12 @@ def size_position(
             f"margin {cents(margin_required)} exceeds budget {cents(margin_budget)} "
             "(§3.2 overlay, per-instrument rate — F-1)"
         )
-        return SizingResult(False, 0, _ZERO, cents(margin_required), tuple(reasons))
+        return SizingResult(False, 0, _ZERO, cents(margin_required), tuple(reasons), key)
 
     effective_risk = cents(units_dec * loss_per_unit)
     if effective_risk > allowed_risk_usd:
         reasons.append("effective risk exceeds approval after rounding — internal error")
-        return SizingResult(False, 0, effective_risk, cents(margin_required), tuple(reasons))
+        return SizingResult(False, 0, effective_risk, cents(margin_required), tuple(reasons), key)
 
     return SizingResult(
         approved=True,
@@ -68,4 +69,5 @@ def size_position(
         effective_risk_usd=effective_risk,
         margin_required_usd=cents(margin_required),
         reasons=(f"loss/unit {loss_per_unit} incl. {spread_pips_assumption} pips spread",),
+        candidate_key=key,
     )

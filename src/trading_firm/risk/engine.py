@@ -55,9 +55,15 @@ class RiskEngine:
         risk = cfg.risk
         reasons: list[str] = []
 
+        candidate_key = candidate.content_key()
+
         def reject(tier: EdgeTier = EdgeTier.NONE) -> RiskDecision:
             return RiskDecision(
-                approved=False, tier=tier, allowed_risk_usd=_ZERO, reasons=tuple(reasons)
+                approved=False,
+                tier=tier,
+                allowed_risk_usd=_ZERO,
+                reasons=tuple(reasons),
+                candidate_key=candidate_key,
             )
 
         # --- fail-closed gates (§0.10): any doubt -> no new entry ---------------
@@ -164,5 +170,6 @@ class RiskEngine:
             tier=tier,
             allowed_risk_usd=allowed,
             reasons=tuple(f"{name} = {cents(value)}" for name, value in capacities.items()),
+            candidate_key=candidate_key,
             binding_constraint=binding,
         )

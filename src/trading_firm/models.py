@@ -115,15 +115,43 @@ class Candidate:
     def stop_distance_pips(self, spec: InstrumentSpec) -> Decimal:
         return self.stop_distance() / spec.pip_size
 
+    def content_key(self) -> str:
+        """Content hash identifying THIS candidate exactly.
+
+        Binds risk decisions and sizing results to the candidate they were
+        issued for (review finding 8/12), and serves as the idempotency key
+        material — distinct candidates never collide (finding 1/18) because
+        entry, stop, and the full creation timestamp participate.
+        """
+        import hashlib
+
+        material = "|".join(
+            [
+                self.instrument,
+                self.strategy_id,
+                self.strategy_version,
+                self.direction.value,
+                str(self.entry_price),
+                str(self.stop_price),
+                self.created_at.isoformat(),
+            ]
+        )
+        return hashlib.sha256(material.encode()).hexdigest()
+
 
 @dataclass(frozen=True)
 class RiskDecision:
-    """Immutable approval/rejection record (§8.1 Risk Engine)."""
+    """Immutable approval/rejection record (§8.1 Risk Engine).
+
+    candidate_key binds the decision to exactly one candidate: the broker
+    adapter refuses approvals minted for a different candidate (§2).
+    """
 
     approved: bool
     tier: EdgeTier
     allowed_risk_usd: Decimal
     reasons: tuple[str, ...]
+    candidate_key: str
     binding_constraint: str | None = None
 
 
@@ -136,6 +164,7 @@ class SizingResult:
     effective_risk_usd: Decimal
     margin_required_usd: Decimal
     reasons: tuple[str, ...]
+    candidate_key: str
 
 
 @dataclass(frozen=True)

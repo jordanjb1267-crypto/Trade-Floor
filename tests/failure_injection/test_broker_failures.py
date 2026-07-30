@@ -1,6 +1,6 @@
-"""Failure-injection tests (§21): broker timeout, duplicate response,
-rejected stop, broker/local position mismatch — driven through the real
-adapter against the fake broker.
+"""Failure-injection tests (§21) through the real adapter against the honest
+fake broker. Regression coverage for 2026-07-30 review findings 0, 2, 9, 10,
+11, 15, 17.
 """
 
 import datetime as dt
@@ -13,25 +13,22 @@ from trading_firm.models import (
     Candidate,
     Direction,
     EdgeTier,
+    InstrumentSpec,
     RiskDecision,
     SizingResult,
 )
-from trading_firm.reconciliation import LocalBook, StartupMode, reconcile, startup_mode
+from trading_firm.reconciliation import (
+    BrokerTradeRecord,
+    LocalBook,
+    StartupMode,
+    reconcile,
+    startup_mode,
+)
 
 D = Decimal
 LONDON = ZoneInfo("Europe/London")
 NOW = dt.datetime(2026, 7, 29, 8, 15, tzinfo=LONDON)
-
-DECISION = RiskDecision(
-    approved=True, tier=EdgeTier.STANDARD, allowed_risk_usd=D("2.50"), reasons=()
-)
-SIZING = SizingResult(
-    approved=True,
-    units=595,
-    effective_risk_usd=D("2.49"),
-    margin_required_usd=D("13.55"),
-    reasons=(),
-)
+EUR_USD = InstrumentSpec(name="EUR_USD", margin_rate=D("0.02"))
 
 
 def candidate() -> Candidate:
@@ -51,63 +48,133 @@ def candidate() -> Candidate:
     )
 
 
+def approvals(cand: Candidate) -> tuple[RiskDecision, SizingResult]:
+    key = cand.content_key()
+    return (
+        RiskDecision(True, EdgeTier.STANDARD, D("2.50"), (), key),
+        SizingResult(True, 595, D("2.49"), D("13.55"), (), key),
+    )
+
+
+def submit(adapter, broker_cand=None):
+    cand = broker_cand or candidate()
+    decision, sizing = approvals(cand)
+    return adapter.submit_entry(cand, decision, sizing, EUR_USD, cand.entry_price, NOW)
+
+
+def adapter_for(broker: FakeBroker) -> BrokerAdapter:
+    return BrokerAdapter(broker, sleep_fn=lambda _s: None)
+
+
 class TestTimeoutHandling:
-    def test_timeout_before_landing_is_unknown_and_resubmit_safe(self) -> None:
+    def test_timeout_before_landing_is_resubmit_safe_after_repeated_lookups(self) -> None:
         broker = FakeBroker()
         broker.inject_timeout()
-        adapter = BrokerAdapter(broker)
-        result = adapter.submit_entry(candidate(), DECISION, SIZING, D("1.1394"))
+        adapter = adapter_for(broker)
+        result = submit(adapter)
         assert result.state is OrderState.UNKNOWN
         assert result.resubmit_safe
-        assert broker.open_trade_ids() == set()  # nothing landed
+        assert broker.open_trade_ids() == set()
 
-        # The documented recovery: one explicit resubmission, still one position.
-        retry = adapter.submit_entry(candidate(), DECISION, SIZING, D("1.1394"))
+        retry = submit(adapter)
         assert retry.state is OrderState.PROTECTED
         assert len(broker.open_trade_ids()) == 1
 
-    def test_timeout_after_landing_adopts_existing_order(self) -> None:
+    def test_timeout_after_landing_resolves_to_the_landed_order(self) -> None:
+        # Finding 11: the genuinely dangerous timeout — the order filled but
+        # the response was lost. The adapter must find it, never resubmit.
         broker = FakeBroker()
-        adapter = BrokerAdapter(broker)
-        first = adapter.submit_entry(candidate(), DECISION, SIZING, D("1.1394"))
-        assert first.state is OrderState.PROTECTED
-
-        # The response was lost in transit the second time; the order already
-        # exists at the broker. Adapter must adopt it, never double-submit.
-        broker.inject_timeout()
-        retry = adapter.submit_entry(candidate(), DECISION, SIZING, D("1.1394"))
-        assert retry.state is OrderState.PROTECTED
-        assert retry.trade_id == first.trade_id
+        broker.inject_timeout_after_landing()
+        adapter = adapter_for(broker)
+        result = submit(adapter)
+        assert result.state is OrderState.PROTECTED
+        assert "resolved at broker" in result.detail
         assert len(broker.open_trade_ids()) == 1
 
+        # And an explicit retry still cannot double the position.
+        retry = submit(adapter)
+        assert retry.trade_id == result.trade_id
+        assert len(broker.open_trade_ids()) == 1
 
-class TestStopFailureDrill:
-    def test_dropped_stop_detected_then_emergency_flatten_reconciles(self) -> None:
+    def test_lookup_failure_during_resolution_forbids_resubmit(self) -> None:
+        # Finding 0: a failed lookup is NOT evidence of absence. skip=1 lets
+        # the pre-submit lookup succeed so the failure hits the RESOLUTION
+        # lookup after the timed-out create.
+        broker = FakeBroker()
+        broker.inject_timeout()
+        broker.inject_lookup_failure(skip=1)
+        adapter = adapter_for(broker)
+        result = submit(adapter)
+        assert result.state is OrderState.UNKNOWN
+        assert not result.resubmit_safe
+        assert "do NOT resubmit" in result.detail
+
+    def test_presubmit_lookup_failure_blocks_submission(self) -> None:
+        broker = FakeBroker()
+        broker.inject_lookup_failure()
+        adapter = adapter_for(broker)
+        result = submit(adapter)
+        assert result.state is OrderState.UNKNOWN
+        assert broker.open_trade_ids() == set()
+
+
+class TestStopFailureDrills:
+    def test_transport_failure_during_stop_verification_is_stop_missing(self) -> None:
+        # Finding 10: a live fill whose stop cannot be VERIFIED is treated as
+        # a stop-loss failure — never an unhandled exception.
+        broker = FakeBroker()
+        broker.inject_get_trade_failure()
+        adapter = adapter_for(broker)
+        result = submit(adapter)
+        assert result.state is OrderState.STOP_MISSING
+        assert "verification unavailable" in result.detail
+
+    def test_dropped_stop_then_emergency_flatten_reconciles(self) -> None:
         broker = FakeBroker()
         broker.inject_dropped_stop()
-        adapter = BrokerAdapter(broker)
-        result = adapter.submit_entry(candidate(), DECISION, SIZING, D("1.1394"))
+        adapter = adapter_for(broker)
+        result = submit(adapter)
         assert result.state is OrderState.STOP_MISSING
 
-        # §8.1 stop-loss failure policy: flatten immediately at market.
-        broker.close_trade(result.trade_id)
-        reconciliation = reconcile(
+        broker.close_trade(result.trade_id)  # §8.1: flatten immediately
+        outcome = reconcile(
             LocalBook(closed_equity=D("250")),
-            broker_open_trade_ids=broker.open_trade_ids(),
+            broker_trades=[BrokerTradeRecord.from_v20(t) for t in broker.open_trades()],
             broker_balance=D("250"),
         )
-        assert reconciliation.clean
-        assert startup_mode(reconciliation) is StartupMode.NORMAL
+        assert outcome.clean
+        assert startup_mode(outcome) is StartupMode.NORMAL
 
 
-class TestDesyncDrill:
-    def test_position_appearing_at_broker_halts_startup(self) -> None:
+class TestFillIntegrity:
+    def test_partial_fill_is_kill_switch_class(self) -> None:
+        # Finding 9: §21 'Partial fill' — mismatch between sized and filled
+        # units is surfaced, never reported as a clean PROTECTED position.
+        broker = FakeBroker()
+        broker.inject_partial_fill(300)
+        adapter = adapter_for(broker)
+        result = submit(adapter)
+        assert result.state is OrderState.STOP_MISSING
+        assert result.filled_units == 300
+        assert "partial fill" in result.detail
+
+    def test_margin_closeout_during_fill_pinned_to_stop_missing(self) -> None:
+        # Finding 17: fill lands, broker closes the trade before verification.
+        broker = FakeBroker()
+        broker.inject_margin_closeout()
+        adapter = adapter_for(broker)
+        result = submit(adapter)
+        assert result.state is OrderState.STOP_MISSING
+
+
+class TestDesyncDrills:
+    def test_hidden_broker_position_halts_startup(self) -> None:
         broker = FakeBroker()
         broker.inject_hidden_trade("9999", "GBP_USD", 100)
-        reconciliation = reconcile(
+        outcome = reconcile(
             LocalBook(closed_equity=D("250")),
-            broker_open_trade_ids=broker.open_trade_ids(),
+            broker_trades=[BrokerTradeRecord.from_v20(t) for t in broker.open_trades()],
             broker_balance=D("250"),
         )
-        assert not reconciliation.entries_enabled
-        assert startup_mode(reconciliation) is StartupMode.HALTED
+        assert not outcome.entries_enabled
+        assert startup_mode(outcome) is StartupMode.HALTED
