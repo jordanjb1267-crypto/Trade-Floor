@@ -259,10 +259,34 @@ assumption is retained deliberately — erring conservative on size is
 correct (§3). Suite: 211. Report addendum:
 `reports/validation/2026-07-30-oanda-fixtures-spreads-feed-robustness.md`.
 
+**2026-07-30 · PR #1 merged on owner instruction ("merge them"); v1.1.3 is
+governing law on `main`.** Merge commit 6645600 (merge method chosen to
+preserve the full 30-commit audit trail). Everything from design review
+through Phase 5 and the first real-data research cycle is now on the
+default branch — which also closes the governance gap the PR #2 episode
+exposed: every fresh session now inherits CLAUDE.md, the hooks, and the
+constitutional schema from its first clone. `live_allowed` remains empty
+everywhere; nothing in the merge changes promotion state (§12.5, §24).
+
+**2026-07-30 · Broker-feed fixtures extended to full history; first
+complete canonical-feed replay.** An owner-directed session extended the
+OANDA practice fixtures to mirror FMP coverage (GBP_USD 2026-03-30→07-29,
+25,337 M5 candles; EUR_USD 2026-06-08→07-29, 10,943; July files verified
+as strict subsets and removed) — the fixture-extension standing item is
+done. Full-sample replay on the canonical feed with measured per-bar
+costs: GBP_USD 65 trades 31W/34L net −$9.02 PF 0.78 maxDD $17.06; EUR_USD
+18 trades 11W/7L net +$0.67 PF 1.07. The champion's costs-eat-edge verdict
+hardens on the venue's own feed, and FMP's earlier EUR optimism (PF 1.57
+on 11 trades) shrinks toward noise — consistent with the feed-noise
+finding. Larger GBP trade count vs FMP (65 vs 48) reflects the broker
+feed's more complete session coverage. NOT validation; still below §12.6
+thresholds (§0.5).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
-passed through chat during setup; merge PR #1 to make v1.1.3 governing on
-`main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access
-exists — prerequisites confirmed 2026-07-30: a fresh VM (or local run) so
-the updated network policy applies, plus a rotated practice token in an
-untracked `.env` (`OANDA_API_TOKEN`, see `.env.example`); extend the replay
-sample backward as FMP history allows before any parameter research begins.
+passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
+once OANDA network access exists — prerequisites confirmed 2026-07-30: a
+fresh VM (or local run) so the updated network policy applies, plus a
+rotated practice token in an untracked `.env` (`OANDA_DEMO_API_TOKEN`, the
+name the scripts read; see `.env.example`); extend the OANDA broker-feed
+fixtures backward (Apr–Jun) before any new strategy research spends a
+§12.4 test.
