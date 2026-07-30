@@ -552,10 +552,20 @@ would still have to export the variables by hand. Either wire up `.env`
 loading or reword the guidance; leaving both as they are invites exactly the
 class of misconfiguration this week produced twice.
 
-**Standing owner to-dos:** rotate the **FMP** token that passed through chat
-during setup (the OANDA practice token was rotated — confirmed 2026-07-30);
-extend the OANDA broker-feed fixtures backward (Apr–Jun) before any new
-strategy research spends a §12.4 test; resolve the `.env` documentation/loading
-mismatch described above. **Cleared 2026-07-30:** OANDA network access, the
-Phase 4 demo lifecycle run, OANDA practice token rotation, and the
-`OANDA_DEMO_API_TOKEN` repair (audit reproduced unassisted, owner-reported).
+**2026-07-30 · FMP token rotated (owner-reported); credential-hygiene
+to-dos closed.** The owner rotated the FMP API key that passed through chat
+during D-7 setup. With the OANDA practice token rotated earlier the same day
+and `OANDA_DEMO_API_TOKEN` repaired, every credential exposed during setup has
+been replaced and no chat-exposed secret remains in use. Nothing in the repo
+referenced either value — tokens have only ever been read from the
+environment (§17) — so no code or config change was required; this entry is
+the audit record (§0.6). Note for future sessions: research fetches through
+the FMP connector will use the new key transparently; if a connector-backed
+fetch begins returning auth errors, the rotation is the first thing to check.
+
+**Standing owner to-dos:** extend the OANDA broker-feed fixtures backward
+(Apr–Jun EUR_USD) before any new strategy research spends a §12.4 test — in
+progress via a delegated session. **Cleared 2026-07-30:** OANDA network
+access, the Phase 4 demo lifecycle run (6/6 PASS), OANDA practice token
+rotation, the `OANDA_DEMO_API_TOKEN` repair, and FMP token rotation. No
+credential exposed during setup remains in use.
