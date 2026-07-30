@@ -185,11 +185,83 @@ class SessionSection(_StrictModel):
 class StrategiesSection(_StrictModel):
     live_allowed: list[str]
     research_allowed: list[str]
+    specialist_research_allowed: list[str] = []
 
 
 class InstrumentsSection(_StrictModel):
     research_priority: list[str]
     live_allowed: list[str]
+
+
+class AdaptiveTradingSection(_StrictModel):
+    """v2 §6/§6A/§6.8 senior-trader controls."""
+
+    senior_trader_pair_enabled: bool
+    independent_first_pass_required: bool
+    market_state_packet_checksum_required: bool
+    allowed_live_novelty_classes: list[str]
+    exceptional_risk_allowed_novelty_classes: list[str]
+    narrative_only_candidates_rejected: bool
+
+    @field_validator("allowed_live_novelty_classes")
+    @classmethod
+    def _live_novelty(cls, value: list[str]) -> list[str]:
+        illegal = [c for c in value if c in ("N2", "N3")]
+        if illegal:
+            raise ValueError(
+                f"allowed_live_novelty_classes may never contain {illegal}: N2 and N3 "
+                f"theses cannot place live orders (§6.8)"
+            )
+        return value
+
+    @field_validator("exceptional_risk_allowed_novelty_classes")
+    @classmethod
+    def _exceptional_novelty(cls, value: list[str]) -> list[str]:
+        illegal = [c for c in value if c != "N0"]
+        if illegal:
+            raise ValueError(
+                f"exceptional_risk_allowed_novelty_classes may only contain N0; got "
+                f"{illegal}. No N1/N2/N3 thesis may receive Exceptional risk (§6.8)"
+            )
+        return value
+
+    @field_validator("independent_first_pass_required", "market_state_packet_checksum_required")
+    @classmethod
+    def _independence_not_optional(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError(
+                "senior-trader independence controls cannot be disabled: agreement "
+                "earns value only from materially independent evidence (§6.2)"
+            )
+        return value
+
+    @field_validator("narrative_only_candidates_rejected")
+    @classmethod
+    def _narrative_rejected(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError(
+                "narrative_only_candidates_rejected cannot be false: a persuasive "
+                "story is not evidence of edge (§0 rule 5, §21)"
+            )
+        return value
+
+
+class FeatureRegistrySection(_StrictModel):
+    """v2 §11: senior traders may only select from approved features."""
+
+    production_allowed: list[str]
+    research_allowed: list[str]
+
+    @model_validator(mode="after")
+    def _production_subset_of_research(self) -> FeatureRegistrySection:
+        unknown = set(self.production_allowed) - set(self.research_allowed)
+        if unknown:
+            raise ValueError(
+                f"feature_registry.production_allowed contains features absent from "
+                f"research_allowed: {sorted(unknown)}. A feature reaches production "
+                f"only through validation (§11, §12.5)"
+            )
+        return self
 
 
 class FirmConfig(_StrictModel):
@@ -201,6 +273,8 @@ class FirmConfig(_StrictModel):
     session: SessionSection
     strategies: StrategiesSection
     instruments: InstrumentsSection
+    adaptive_trading: AdaptiveTradingSection
+    feature_registry: FeatureRegistrySection
 
     @model_validator(mode="after")
     def _cross_section(self) -> FirmConfig:

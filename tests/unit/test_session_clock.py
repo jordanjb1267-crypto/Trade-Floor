@@ -97,3 +97,44 @@ class TestRolloverBlackout:
             dt.date(2026, 7, 29), dt.time.fromisoformat(hhmm), tzinfo=UTC
         )
         assert clock.in_rollover_blackout(moment) is expected
+
+
+class TestChicagoAnchoringWouldBeWrong:
+    """v2.0.0 §24 proposed Chicago-local session times (activation "02:00").
+    v2.1.0 restores London anchoring (R: C-2). This pins WHY, across every
+    divergence day in 2026 — not a spot check.
+    """
+
+    def test_london_anchor_holds_on_every_2026_divergence_day(self) -> None:
+        config = load_config(BASE_CONFIG_PATH)
+        clock = SessionClock(config.session)
+        chicago = ZoneInfo("America/Chicago")
+        divergent = []
+        day = dt.date(2026, 1, 1)
+        while day <= dt.date(2026, 12, 31):
+            chi_0200 = dt.datetime.combine(day, dt.time(2, 0), tzinfo=chicago)
+            if chi_0200.astimezone(LONDON).strftime("%H:%M") != "08:00":
+                divergent.append(day)
+            day += dt.timedelta(days=1)
+
+        # The hazard is real and sizeable, not theoretical.
+        assert len(divergent) == 27, f"expected 27 divergence days, got {len(divergent)}"
+
+        # On every one of them the firm still activates at 08:00 London.
+        for day in divergent:
+            activation = clock.boundaries(day)["activation"]
+            assert activation.strftime("%H:%M") == "08:00"
+            assert activation.tzinfo is LONDON
+            # ...while the correct Chicago rendering SHIFTS to 03:00 on these
+            # days. That is the whole hazard: a config storing Chicago "02:00"
+            # would fire at London 07:00 — an hour before the open, inside the
+            # window the Asian range is computed from. A Chicago wall-clock
+            # value would have to change twice a year to stay correct; the
+            # London anchor never does.
+            assert activation.astimezone(chicago).strftime("%H:%M") == "03:00"
+
+    def test_flatten_boundary_holds_through_divergence(self) -> None:
+        config = load_config(BASE_CONFIG_PATH)
+        clock = SessionClock(config.session)
+        for day in (dt.date(2026, 3, 10), dt.date(2026, 10, 26)):
+            assert clock.boundaries(day)["flatten"].strftime("%H:%M") == "11:00"

@@ -623,6 +623,47 @@ Phase 6 (shadow, then paper), which §22 places on the owner's trading laptop
 rather than in a build session — it is owner-initiated work, not a pending
 implementer task.
 
+**2026-07-30 · Governing spec replaced: Adaptive Handoff v2.1.0 (owner
+instruction; merge ratified).** The owner supplied
+`CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.md` (v2.0.0) as the new source
+of truth — a substantial upgrade making the firm opportunity-driven rather than
+strategy-driven: an independent Senior Trader Alpha/Beta pair above the
+specialist bench, a checksum-enforced Market State Packet, the Adaptive Trade
+Thesis Schema, novelty classes N0–N3, evidence classes E0–E5 replacing the
+opaque edge score, an approved feature/indicator registry, and an adaptive
+policy manifest. REVIEW FINDING: v2.0.0's header reads "Supersedes: Version
+1.0.0" — it was drafted from the ORIGINAL spec and therefore carried none of
+the amendments ratified since. Adopting it verbatim would have silently deleted
+seven protections that are enforced in code and backed by evidence. Presented
+to the owner, who ratified the merge and directed governance-first sequencing.
+Restored in v2.1.0, each tagged inline and registered in §29: London-anchored
+session times (R: C-2 — verified that Chicago-anchored 02:00 resolves to London
+07:00 on 27 calendar days in 2026, an hour before the open and inside the Asian
+range window); owner-approved pending tier promotion (D-2/C-3, v2 §4.2 had
+reverted to automatic); deposits never advance milestones (D-3, v2 had softened
+it); per-instrument margin rate and utilization overlay (F-1); 21:00 UTC
+rollover blackout and inviolate flatten (F-5); §12.6 minimum-evidence
+thresholds (D-5/M-8, v2 said only "a predefined sample"); §12.7 research
+publication gate (A-1, ratified hours earlier). Section numbering is otherwise
+identical to v2.0.0 and aligned with v1.1.4 for §0–§26 — critically the §0
+iron-rule list is unchanged in order, so all ~110 positional §0.N citations
+stayed valid; only §27→§28 and §28.x→§29.x were remapped, and §12.6/§12.7 were
+re-added at their original numbers so 50 existing references kept resolving.
+A coupling audit found 857 §-references across 97 files, including inside the
+ValueError messages 18 config validators raise for operators — with nothing
+verifying any of them. `scripts/check_spec_refs.py` now fails CI on an
+unresolvable reference (562 checked, all resolve); append-only historical
+records are skipped by design since they cite the spec in force when written.
+Pass 1 delivered: novelty/evidence permission tables as TYPE constraints
+(`adaptive.py`) following the M-1 precedent — an N2 thesis with E5 evidence
+still yields tier 0, unrepresentable rather than merely rejected; the Adaptive
+Thesis Schema with a narrative-only rejection validator; `adaptive_trading` and
+`feature_registry` config sections with seven new violation-injection cases;
+and a DST regression asserting the London anchor holds on every one of the 27
+divergence days. Suite 284 → 305. Pass 2 (Alpha/Beta agents, packet runtime,
+Arbiter, analog engine, experiment ledger) is scoped separately. v2.0.0 is
+committed verbatim (SHA-256 96633f32…) and v1.1.4 preserved unedited (§0.11).
+
 **Standing owner to-dos:** none outstanding. Next action is owner-side:
 begin Phase 6 shadow operation on the trading laptop when ready (§22, §13).
 Before any new strategy research, note that §12.4's multiple-testing ledger
