@@ -20,7 +20,12 @@ drives live behavior).
   engine's conservative 2-pip assumption, not from measured per-bar
   spreads (F-3/F-5 measured 1.5–2.0 pips in-session on practice).
 
-## `*_M5_oanda_practice_*.json` (none committed yet)
+## `*_M5_oanda_practice_*.json`
+
+Committed coverage mirrors the FMP series per instrument: GBP_USD
+2026-03-30 → 2026-07-29 and EUR_USD 2026-06-08 → 2026-07-29 (full 24h
+UTC days, not trimmed to the London slice; the only quality events are
+10–15 min gaps at Sunday ~21:00 UTC weekend opens).
 
 Fetched by `scripts/fetch_oanda_candles.py` (read-only, practice host only,
 token via `OANDA_DEMO_API_TOKEN`). Shape: `{"meta": {...}, "candles": [...]}`
