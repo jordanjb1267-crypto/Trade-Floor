@@ -1,10 +1,10 @@
-# Claude London Trading Firm
+# Claude Adaptive London-Session Trading Firm
 
-Agent-assisted London-session FX trading operating system. **LLMs recommend;
-deterministic code enforces** (§2, §27).
+Agent-assisted, **opportunity-driven** London-session FX trading operating
+system. **LLMs recommend; deterministic code enforces** (§2, §28).
 
 **Governing specification (source of truth):**
-`docs/spec/CLAUDE_LONDON_TRADING_FIRM_MASTER_HANDOFF_v1.1.4.md`
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.1.0.md`
 All §-references in this repo point there. When this file and the spec
 disagree, the spec wins.
 
@@ -18,6 +18,15 @@ validates order *mechanics* only, not fill quality or edge. No trading system
 is live. `live_allowed` is empty everywhere
 and stays empty until the promotion process completes with owner approval
 (§12.5, §24).
+
+**The firm is market-opportunity driven, not strategy driven (v2 §1).** Two
+independent Senior Traders may build a situation-specific thesis instead of
+invoking a named playbook. That freedom is bounded by two classifications that
+are enforced as TYPES, not conventions (`src/trading_firm/adaptive.py`):
+**novelty** N0–N3 (§6.8 — N2/N3 can never place a live order; only N0 may
+receive Exceptional risk) and **evidence** E0–E5 (§5.2 — a class sets a ceiling
+on the tier the risk gate may consider, never an authorization of size). The
+three named strategies are now a specialist bench, not the firm's mandate.
 
 **Research code is publication-gated (§12.7, amendment A-1).** No number a
 research script produces may enter a validation report, a promotion record,
@@ -44,7 +53,7 @@ logic changes.
    (see `.env.example`). The pre-write hook scans for credential patterns
    and cannot be overridden.
 6. **Audit everything.** Material decisions go to `governance/decision-log.md`;
-   spec changes bump the version and add a §28.1 changelist row.
+   spec changes bump the version and add a §29.1 changelist row.
 7. **Ask the owner only for genuinely blocking decisions** (§0.12).
 
 ## Protected paths (owner approval required — §7.2/§7.3)

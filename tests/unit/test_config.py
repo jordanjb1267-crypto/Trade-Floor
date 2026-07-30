@@ -89,6 +89,15 @@ class TestConstitutionalInvariants:
             (["strategies", "live_allowed"], ["london_breakout"]),  # §24 outside live env
             (["risk", "initial_weekly_loss_limit_usd"], 20.00),  # §3.4 weekly > session
             (["risk", "initial_live_floor_usd"], 300.00),  # §3.4 floor < anchor
+            # v2 adaptive layer (§6.8, §6.2, §11) — an unvalidated idea must not
+            # be able to reach live exposure through configuration.
+            (["adaptive_trading", "allowed_live_novelty_classes"], ["N2"]),  # §6.8
+            (["adaptive_trading", "allowed_live_novelty_classes"], ["N3"]),  # §6.8
+            (["adaptive_trading", "exceptional_risk_allowed_novelty_classes"], ["N1"]),  # §6.8
+            (["adaptive_trading", "independent_first_pass_required"], False),  # §6.2
+            (["adaptive_trading", "market_state_packet_checksum_required"], False),  # §6.2
+            (["adaptive_trading", "narrative_only_candidates_rejected"], False),  # §21
+            (["feature_registry", "production_allowed"], ["unvalidated_feature"]),  # §11
         ],
     )
     def test_violation_rejected(self, base_raw: dict, path: list, value) -> None:

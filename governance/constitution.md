@@ -1,11 +1,11 @@
 # Constitution
 
 The firm's constitution is the governing specification:
-**`docs/spec/CLAUDE_LONDON_TRADING_FIRM_MASTER_HANDOFF_v1.1.4.md`**.
+**`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.1.0.md`**.
 This file is a pointer and amendment ledger, not a restatement — one source
 of truth, no divergence.
 
-## Binding principles (§0, §27)
+## Binding principles (§0, §28)
 
 1. LLMs research, evaluate, and recommend. Only deterministic code
    authorizes size, enforces limits, and submits orders.
@@ -20,7 +20,7 @@ of truth, no divergence.
 
 ## Amendment process
 
-A spec change requires: a version bump, a row in the spec's §28.1
+A spec change requires: a version bump, a row in the spec's §29.1
 changelist, a dated entry in `governance/decision-log.md`, and — for any
 change that weakens a control or grants a permission — explicit owner
 approval recorded in `governance/approvals/`. Corrections driven by audit
@@ -38,3 +38,5 @@ including a superseded finding preserved unedited per §0.11).
 | v1.1.2 | 2026-07-29 | Audit F-4 (later superseded) |
 | v1.1.3 | 2026-07-29 | Audit F-5 corrects F-4; rollover hazard codified |
 | v1.1.4 | 2026-07-30 | A-1: §12.7 mandatory adversarial review of research code |
+| v2.0.0 | 2026-07-30 | Owner-supplied adaptive rewrite (senior-trader pair, novelty/evidence classes); drafted from v1.0.0 |
+| v2.1.0 | 2026-07-30 | v2.0.0 + the seven protections it omitted, restored (§29) |

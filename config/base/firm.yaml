@@ -73,9 +73,33 @@ session:
   display_timezone: America/Chicago
   holiday_calendar_required: true
 
+# v2 §6/§6A/§6.8: the senior-trader pair may build situation-specific theses.
+# Live novelty is empty and exceptional risk is N0-only — an unvalidated idea
+# cannot reach live exposure regardless of how persuasive its narrative is.
+adaptive_trading:
+  senior_trader_pair_enabled: true
+  independent_first_pass_required: true
+  market_state_packet_checksum_required: true
+  allowed_live_novelty_classes: []
+  exceptional_risk_allowed_novelty_classes:
+    - N0
+  narrative_only_candidates_rejected: true
+
+# v2 §11: only registry features may be referenced; production is empty until
+# each feature has passed validation.
+feature_registry:
+  production_allowed: []
+  research_allowed:
+    - session_features_v1
+    - structure_features_v1
+
 strategies:
   live_allowed: []
   research_allowed:
+    - london_breakout
+    - asian_range_sweep_reversal
+    - london_continuation
+  specialist_research_allowed:
     - london_breakout
     - asian_range_sweep_reversal
     - london_continuation
