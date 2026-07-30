@@ -321,6 +321,22 @@ push; attempt 2 of 2 fired ~14:18 UTC with push-evidence-first
 instructions. Report:
 `reports/validation/2026-07-30-london-continuation-v0.1.0-baseline.md`.
 
+**2026-07-30 · Phase 4 practice order-lifecycle run attempted; FAILED
+CLOSED (no token, no network contact).** The delegated fresh session ran
+the pre-run gate (219 tests green from a clean `main` checkout) and then
+checked for `OANDA_DEMO_API_TOKEN`: not set, and no untracked `.env`
+present. Per the run directive no token was requested and the chat-exposed
+rotation-list token was not used; the guarded script was invoked once and
+refused before any network I/O (`RuntimeError: OANDA_DEMO_API_TOKEN not
+set`, 2026-07-30T15:03:46Z) — 0/7 lifecycle checks reached the broker, and
+the fail-closed guard itself behaved exactly as designed. Evidence:
+`docs/audits/2026-07-30-practice-order-lifecycle.md` (branch
+`claude/practice-lifecycle-evidence`). The standing to-do remains open;
+prerequisites unchanged (rotated practice token in the environment, egress
+policy allowing the practice host). ROOT CAUSE for the owner: the
+environment's variables do not include `OANDA_DEMO_API_TOKEN` — adding it
+(rotated value) makes the run a one-command re-fire.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a
