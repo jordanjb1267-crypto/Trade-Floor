@@ -4,13 +4,23 @@ Agent-assisted London-session FX trading operating system. **LLMs recommend;
 deterministic code enforces** (§2, §27).
 
 **Governing specification (source of truth):**
-`docs/spec/CLAUDE_LONDON_TRADING_FIRM_MASTER_HANDOFF_v1.1.3.md`
+`docs/spec/CLAUDE_LONDON_TRADING_FIRM_MASTER_HANDOFF_v1.1.4.md`
 All §-references in this repo point there. When this file and the spec
 disagree, the spec wins.
 
-**Current status:** Phase 1 (governance & skeleton). No trading system is
-live. `live_allowed` is empty everywhere and stays empty until the promotion
-process completes with owner approval (§12.5, §24).
+**Current status:** Phases 1–5 delivered (governance, deterministic core,
+research framework, broker sandbox, agent orchestration); Phase 4's practice
+order-lifecycle run remains outstanding (needs `OANDA_DEMO_API_TOKEN` in the
+environment). No trading system is live. `live_allowed` is empty everywhere
+and stays empty until the promotion process completes with owner approval
+(§12.5, §24).
+
+**Research code is publication-gated (§12.7, amendment A-1).** No number a
+research script produces may enter a validation report, a promotion record,
+or a §12.6 evidence count until the code paths producing it have passed an
+independent, refutation-default adversarial review. Re-review is required
+whenever the fill model, cost model, feature boundaries, or a strategy's rule
+logic changes.
 
 ## Iron rules (from §0 — never weaken silently)
 

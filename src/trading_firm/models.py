@@ -1,4 +1,4 @@
-"""Domain models for the deterministic core (Master Handoff v1.1.3 §8, §10.2).
+"""Domain models for the deterministic core (Master Handoff v1.1.4 §8, §10.2).
 
 Frozen dataclasses and Decimal money math throughout: risk-critical values
 never pass through binary floats.

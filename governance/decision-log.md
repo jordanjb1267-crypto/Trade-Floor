@@ -406,6 +406,30 @@ All now pinned by exact value. data/research/README.md documents the FMP
 holes. Suite: 236 → 255. Correction report updated with a second-pass
 section.
 
+**2026-07-30 · Spec amended to v1.1.4 — amendment A-1 ratified by the owner:
+research code is publication-gated (§12.7).** Recommended by the implementer
+after the achievable-fill defect showed that a green 236-test suite can sit
+on top of research code that publishes fictitious results and breaches the §3
+risk cap; the owner authorized the change the same day ("i authorize you to
+make the change"), which is the §28 ratification the amendment required — the
+implementer proposed it and did NOT self-approve it. Substance: §12.4 gains a
+review bullet; new §12.7 states (1) a publication gate — no research number
+may enter a validation report, promotion record, or §12.6 evidence count
+until its code paths pass adversarial review; (2) independence from the author
+and a refutation-default posture; (3) minimum coverage — look-ahead, fill
+realism/cost model, rule-vs-manifest fidelity, claim-vs-computation
+recomputation, and mutation-tested invariants; (4) refutations recorded
+alongside confirmations, because acting on an unverified claim is itself a
+defect vector; (5) re-review triggered by any change to the fill model, cost
+model, feature boundaries, or rule logic; (6) honest denominators and
+disclosed coverage holes — a report overstating its own evidence violates
+§12.4 even when every P&L figure is correct; (7) audit trail in this log.
+§21 gains fill-realism and mutation-coverage test requirements. Ratification
+recorded in §28.3; changelist row added to §28.1; governing pointers updated
+across CLAUDE.md, README, constitution, config and source headers. Prior
+versions are retained unedited — v1.1.4 is a new file, not an edit of v1.1.3
+(§0.11).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a

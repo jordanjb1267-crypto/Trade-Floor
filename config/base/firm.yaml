@@ -1,4 +1,4 @@
-# Claude London Trading Firm — base configuration (Master Handoff v1.1.3 §24)
+# Claude London Trading Firm — base configuration (Master Handoff v1.1.4 §24)
 # Validated by src/trading_firm/config.py; invariants are enforced at load time.
 # live_allowed stays empty until the promotion process and owner approval (§12.5, §24).
 
