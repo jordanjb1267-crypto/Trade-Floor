@@ -16,10 +16,18 @@ credentials must stay separate (§17).
 """
 
 import json
-import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from trading_firm.execution.credentials import (  # noqa: E402
+    CredentialError,
+    configured_account_id,
+    practice_token,
+)
 
 HOST = "api-fxpractice.oanda.com"  # practice ONLY — do not change to fxtrade (§13)
 INSTRUMENTS = ["GBP_USD", "EUR_USD"]
@@ -38,9 +46,13 @@ def get(token: str, path: str):
 
 
 def main() -> int:
-    token = os.environ.get("OANDA_DEMO_API_TOKEN")
-    if not token:
-        print("FAIL: set OANDA_DEMO_API_TOKEN (never hard-code it; see .env.example)")
+    # Preflight before any request, so a placeholder is reported as a
+    # placeholder instead of arriving as a 401 that reads like a bad token.
+    try:
+        token = practice_token()
+        pinned_account = configured_account_id()
+    except CredentialError as err:
+        print(f"FAIL: {err}")
         return 2
 
     checks: list[tuple[str, bool, str]] = []
@@ -58,7 +70,7 @@ def main() -> int:
         return 1
 
     checks.append(("API reachable, token accepted (practice)", True, HOST))
-    account_id = os.environ.get("OANDA_DEMO_ACCOUNT_ID") or accounts[0]["id"]
+    account_id = pinned_account or accounts[0]["id"]
     print(f"Accounts on token: {len(accounts)}; auditing {redact(account_id)}\n")
 
     summary = get(token, f"/v3/accounts/{account_id}/summary")["account"]

@@ -430,11 +430,45 @@ across CLAUDE.md, README, constitution, config and source headers. Prior
 versions are retained unedited — v1.1.4 is a new file, not an edit of v1.1.3
 (§0.11).
 
+**2026-07-30 · Phase 4 lifecycle attempt 2 — failed closed on a placeholder
+credential; a 401-misdiagnosis defect found and fixed.** The owner reported
+"Oanda token added to environment". Both `OANDA_DEMO_API_TOKEN` and
+`OANDA_DEMO_ACCOUNT_ID` were indeed present — holding the literal placeholder
+notation from the usage docstring (`<practice token>`-shaped, 16 chars; `<id>`,
+4 chars), inspected by length and pattern only and never printed. So the
+to-do's second prerequisite is still open and no token has been rotated. Its
+first prerequisite is now **met**: the practice host answered an unauthenticated
+probe with a genuine OANDA 401 (`Server: cloudflare`, OANDA's error schema, no
+proxy `Via`), so egress works and attempt 1's "no network" condition is gone.
+The attempt itself is the value: run pre-fix, it failed with **"no practice
+accounts on this token"** — a rejected credential reported as a missing
+account, which would send an operator to create a practice account they already
+have. Root cause: `_request` preserved every HTTP error body as an ordinary
+response, right for order rejections carrying `orderRejectTransaction`
+(finding 5) but wrong for auth failures, so a 401 became a valid-looking empty
+account list. Fixed on three fronts: (1) 401/403 now raise `BrokerAuthError`,
+which subclasses `TransportFailureError` so every existing handler keeps its
+fail-closed UNKNOWN routing — safe here because a rejected credential also
+fails the confirmed-absent lookups `resubmit_safe` demands, so the path cannot
+resubmit; (2) new `execution/credentials.py` refuses placeholders, empty and
+whitespace-bearing values before any network I/O, and rules out only what is
+locally impossible — judging a well-formed token stays the broker's job;
+(3) the transport now honors the documented `OANDA_DEMO_ACCOUNT_ID` pin, which
+it had silently ignored while always taking `accounts[0]` — a wrong-account
+risk on any token holding several practice accounts. `oanda_transport.py` had
+**zero** test coverage; it now has 20 tests, and all three invariants were
+mutation-tested (neutering each fix fails the suite). No credential value
+appears in code, tests, logs, or evidence (§0 iron rule 5). Suite: 255 → 275.
+Phase 4's lifecycle run remains outstanding. Evidence appended as attempt 2 to
+`docs/audits/2026-07-30-practice-order-lifecycle.md`; attempt 1 unedited
+(§0.11).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
-passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
-once OANDA network access exists — prerequisites confirmed 2026-07-30: a
-fresh VM (or local run) so the updated network policy applies, plus a
-rotated practice token in an untracked `.env` (`OANDA_DEMO_API_TOKEN`, the
-name the scripts read; see `.env.example`); extend the OANDA broker-feed
-fixtures backward (Apr–Jun) before any new strategy research spends a
-§12.4 test.
+passed through chat during setup; run scripts/broker_sandbox_lifecycle.py —
+network access **confirmed working 2026-07-30** (attempt 2), so the sole
+remaining prerequisite is a **rotated** practice token in
+`OANDA_DEMO_API_TOKEN` (untracked `.env` or session environment; see
+`.env.example`) replacing the placeholder currently there —
+`OANDA_DEMO_ACCOUNT_ID` is optional but must not stay a placeholder; extend
+the OANDA broker-feed fixtures backward (Apr–Jun) before any new strategy
+research spends a §12.4 test.

@@ -12,19 +12,45 @@ Hardened per the 2026-07-30 adversarial review:
   pending-order specifier 404s for them — finding 0/3). Window: the most
   recent 500 orders; the transactions-log walk is the Phase 6 upgrade path.
 
+Per the 2026-07-30 lifecycle attempt:
+- Credentials are validated before any network I/O, so a placeholder copied
+  from .env.example is named as one rather than provoking a broker round trip.
+- 401/403 raise BrokerAuthError instead of being preserved as a body; the
+  preservation rule above is for order rejections, and applying it to auth
+  failures reported a bad token as "no practice accounts on this token".
+
 Token comes from the environment at construction (§17); never logged.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 
-from trading_firm.execution.adapter import ClientOrderStatus, TransportFailureError
+from trading_firm.execution.adapter import (
+    BrokerAuthError,
+    ClientOrderStatus,
+    TransportFailureError,
+)
+from trading_firm.execution.credentials import (
+    TOKEN_VAR,
+    configured_account_id,
+    practice_token,
+)
 
 PRACTICE_HOST = "https://api-fxpractice.oanda.com"  # practice ONLY (§13)
+
+def _error_message(raw: str) -> str:
+    """OANDA's own errorMessage, for diagnosis. Never includes the credential:
+    the token travels in the request header, not in any response body."""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return "unparseable body"
+    message = parsed.get("errorMessage") if isinstance(parsed, dict) else None
+    return str(message) if message else "no errorMessage in body"
+
 
 _ORDER_STATE_MAP = {
     "PENDING": "PENDING",
@@ -38,14 +64,16 @@ class OandaPracticeTransport:
     is_practice = True
 
     def __init__(self, account_id: str | None = None):
-        token = os.environ.get("OANDA_DEMO_API_TOKEN")
-        if not token:
-            raise RuntimeError("OANDA_DEMO_API_TOKEN not set (see .env.example; §17)")
+        token = practice_token()
         self._headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        self._account_id = account_id or self._first_account_id()
+        # Explicit argument wins, then the OANDA_DEMO_ACCOUNT_ID pin both
+        # scripts document, then the first account on the token. Honoring the
+        # pin matters on a token holding several practice accounts, where
+        # "first" is whichever one OANDA happens to list first.
+        self._account_id = account_id or configured_account_id() or self._first_account_id()
 
     def _request(self, method: str, path: str, body: dict | None = None) -> dict:
         request = urllib.request.Request(
@@ -59,6 +87,18 @@ class OandaPracticeTransport:
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as err:
             raw = err.read().decode(errors="replace")
+            if err.code in (401, 403):
+                # A rejected credential carries no trading payload, so the
+                # finding-5 preservation below must not apply to it: returning
+                # {"errorMessage": ...} as an ordinary body made
+                # _first_account_id report "no practice accounts on this
+                # token" for what was really a bad token.
+                raise BrokerAuthError(
+                    f"HTTP {err.code} from the practice host on {method} {path}: "
+                    f"credential rejected ({_error_message(raw)}). Check that "
+                    f"{TOKEN_VAR} holds a current fxTrade Practice token — a live "
+                    f"token is also rejected here by design (§13)."
+                ) from err
             try:
                 # Preserve error bodies: they carry orderRejectTransaction /
                 # errorMessage, which are definitive answers (finding 5).

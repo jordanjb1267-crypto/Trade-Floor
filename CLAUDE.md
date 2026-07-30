@@ -10,8 +10,11 @@ disagree, the spec wins.
 
 **Current status:** Phases 1–5 delivered (governance, deterministic core,
 research framework, broker sandbox, agent orchestration); Phase 4's practice
-order-lifecycle run remains outstanding (needs `OANDA_DEMO_API_TOKEN` in the
-environment). No trading system is live. `live_allowed` is empty everywhere
+order-lifecycle run remains outstanding. It needs a **real, rotated** fxTrade
+Practice token in `OANDA_DEMO_API_TOKEN` — network access to the practice host
+is confirmed working, and the scripts now refuse placeholder values outright,
+so setting the variable to `.env.example`'s `<practice token>` does not satisfy
+this. No trading system is live. `live_allowed` is empty everywhere
 and stays empty until the promotion process completes with owner approval
 (§12.5, §24).
 

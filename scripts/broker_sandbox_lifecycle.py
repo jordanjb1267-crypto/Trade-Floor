@@ -22,6 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from trading_firm.execution.adapter import BrokerAuthError  # noqa: E402
+from trading_firm.execution.credentials import CredentialError  # noqa: E402
 from trading_firm.execution.oanda_transport import OandaPracticeTransport  # noqa: E402
 
 
@@ -31,7 +33,13 @@ def main() -> int:
         return 2
 
     checks: list[tuple[str, bool, str]] = []
-    transport = OandaPracticeTransport()
+    # A credential problem is a refusal, not a crash: it is reported in the
+    # same shape as the other guards, and no order was placed either way.
+    try:
+        transport = OandaPracticeTransport()
+    except (CredentialError, BrokerAuthError) as err:
+        print(f"Refusing to run: {err}")
+        return 2
 
     summary = transport.account_summary().get("account", {})
     checks.append(("account reachable", bool(summary), f"balance={summary.get('balance')}"))

@@ -51,6 +51,18 @@ class TransportFailureError(RuntimeError):
     loss, unparseable response). The request MAY have reached the broker."""
 
 
+class BrokerAuthError(TransportFailureError):
+    """The broker rejected the credential itself (HTTP 401/403).
+
+    Subclasses TransportFailureError deliberately: every existing handler
+    keeps routing it through fail-closed UNKNOWN resolution, which stays
+    correct here because a rejected credential also fails the confirmed-absent
+    lookups resubmit_safe requires — so the path can never resubmit. The
+    distinct type exists so operators get the real cause by name instead of a
+    downstream symptom.
+    """
+
+
 class OrderPathViolationError(RuntimeError):
     """A §2 order-path stage was skipped or a guard failed. Never rescued."""
 
