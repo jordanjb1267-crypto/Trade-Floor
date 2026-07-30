@@ -509,6 +509,17 @@ the **FMP** token rotation is untouched by this confirmation and stays open.
 Recorded as an addendum to attempt 3 rather than an edit to it — the original
 statement was accurate when written (§0.11).
 
+**2026-07-30 · Correction banners extended to name the denominator defect
+(§12.7(6) applied).** The six superseded reports carried banners naming only
+the achievable-fill defect, so a reader could reasonably have trusted the
+`sessions` counts printed beneath them — which were inflated ~19% by
+Sunday-reopen dates. Each banner now names both defects and states the honest
+counts (88 GBP / 38 EUR, not 105/45) plus a pointer to the documented FMP
+coverage holes. This is the first application of the newly ratified
+§12.7(6): a report that overstates its own evidence violates §12.4 even where
+its P&L is correct. Report bodies remain unedited — only the annotation
+banners changed (§0.11).
+
 **Standing owner to-dos:** rotate the **FMP** token that passed through chat
 during setup (the OANDA practice token was rotated — confirmed 2026-07-30);
 repair `OANDA_DEMO_API_TOKEN`, which currently holds the token with

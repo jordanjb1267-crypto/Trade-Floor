@@ -1,11 +1,17 @@
 # Replay report (extended GBP sample) — london_breakout v0.1.0 (2026-07-30)
 
-> **⚠ SUPERSEDED IN PART (2026-07-30).** The result tables below were
-> computed with a replay engine that filled gapped entries at an unobtainable
-> price and sized them against a stop distance the trade never had. Corrected
-> figures — including two sign flips — are in
-> `2026-07-30-CORRECTION-achievable-fills.md`. This report is preserved
-> unedited below that line per §0.11; do not cite its numbers.
+> **⚠ SUPERSEDED IN PART (2026-07-30).** Two independent defects affect the
+> tables below. (1) **P&L:** the replay engine filled gapped entries at an
+> unobtainable price and sized them against a stop distance the trade never
+> had — corrected figures, including two sign flips, are in
+> `2026-07-30-CORRECTION-achievable-fills.md`. (2) **Denominators:** any
+> `sessions` count below is inflated ~19% because it included Sunday-reopen
+> dates that can never produce features — the honest counts are **88** (GBP,
+> Mar 30–Jul 29) and **38** (EUR, Jun 8–Jul 29), not 105/45. Coverage holes in
+> the FMP fixture (15 absent weekdays) are documented in
+> `data/research/README.md`. Per §12.7(6) a report that overstates its own
+> evidence is a §12.4 violation even where its P&L is right. This report is
+> preserved unedited below that line per §0.11; do not cite its numbers.
 
 
 **Status: framework replay output — NOT validation** (§12.4, §12.6). Extends
