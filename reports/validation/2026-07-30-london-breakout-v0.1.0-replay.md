@@ -1,5 +1,13 @@
 # Replay report — london_breakout v0.1.0 on real M5 data (2026-07-30)
 
+> **⚠ SUPERSEDED IN PART (2026-07-30).** The result tables below were
+> computed with a replay engine that filled gapped entries at an unobtainable
+> price and sized them against a stop distance the trade never had. Corrected
+> figures — including two sign flips — are in
+> `2026-07-30-CORRECTION-achievable-fills.md`. This report is preserved
+> unedited below that line per §0.11; do not cite its numbers.
+
+
 **Status: framework replay output — NOT validation.** The §12.4
 anti-overfitting protocol and the §12.6 minimum-evidence table govern any
 use of these numbers. 30 trades total across both instruments sits below

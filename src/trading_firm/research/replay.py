@@ -179,12 +179,42 @@ def replay_session(
         return SessionOutcome(session_date, SessionStatus.NO_SIGNAL)
 
     trigger_bar = signal.triggered_by
+    is_long = signal.direction is Direction.LONG
+
+    # ACHIEVABLE FILL (adversarial-review finding, 2026-07-30).
+    # A stop-order entry cannot fill at a price the market has already passed.
+    # The Asian range freezes at 07:30 but entries open at 08:00, so when the
+    # break happens inside that gap the first ACTIVE bar OPENS beyond the
+    # trigger: the earliest obtainable price is that open, not the stale
+    # trigger. Clamping to the adverse side of the trigger bar's open models
+    # the gap fill a broker would actually give. Entering the risk engine with
+    # this price (not the trigger) is what keeps §3 sizing honest: the real
+    # stop distance is wider, so the approved size is smaller — previously the
+    # engine sized a stop distance the trade never had, breaching the risk cap.
+    # Strategies entering AT a bar's close (entry_at_close) are unaffected:
+    # the close is by definition a traded price of that bar.
+    if getattr(signal, "entry_at_close", False):
+        entry_mid = signal.trigger_price
+    else:
+        entry_mid = (
+            max(signal.trigger_price, trigger_bar.open)
+            if is_long
+            else min(signal.trigger_price, trigger_bar.open)
+        )
+    # Note: no "gapped past the stop" branch is needed. Clamping moves the
+    # entry only in the ADVERSE direction (up for a long, down for a short),
+    # i.e. always away from the stop, which every strategy places on the
+    # opposite side of the trigger. Entry therefore stays on the correct side
+    # of invalidation for any gap size; a gap large enough to be untradeable
+    # instead widens the stop distance until sizing rejects it. Pinned by
+    # tests/unit/test_replay_fills.py::test_entry_stays_on_the_live_side_of_the_stop.
+
     candidate = Candidate(
         instrument=spec.name,
         strategy_id=manifest.strategy_id,
         strategy_version=manifest.version,
         direction=signal.direction,
-        entry_price=signal.trigger_price,
+        entry_price=entry_mid,
         stop_price=signal.stop_price,
         edge_score=RESEARCH_BASELINE_SCORE,
         created_at=trigger_bar.ts,
@@ -220,11 +250,8 @@ def replay_session(
             return spread_pips / 2 * spec.pip_size
         return spreads.at(bar.ts) / 2
 
-    is_long = signal.direction is Direction.LONG
     entry_exec = (
-        signal.trigger_price + half_spread(trigger_bar)
-        if is_long
-        else signal.trigger_price - half_spread(trigger_bar)
+        entry_mid + half_spread(trigger_bar) if is_long else entry_mid - half_spread(trigger_bar)
     )
 
     def exit_exec(bar: Bar, mid: Decimal) -> Decimal:
@@ -247,16 +274,19 @@ def replay_session(
         target_price = signal.target_price
         breakeven_level: Decimal | None = None
     else:
+        # R-multiples anchor on the ACHIEVABLE entry, not the trigger: R is
+        # defined by the risk actually taken (risk_distance already derives
+        # from the candidate's clamped entry).
         target_price = (
-            signal.trigger_price + exit_policy.target_r * risk_distance
+            entry_mid + exit_policy.target_r * risk_distance
             if is_long
-            else signal.trigger_price - exit_policy.target_r * risk_distance
+            else entry_mid - exit_policy.target_r * risk_distance
         )
         breakeven_level = (
             (
-                signal.trigger_price + exit_policy.breakeven_trigger_r * risk_distance
+                entry_mid + exit_policy.breakeven_trigger_r * risk_distance
                 if is_long
-                else signal.trigger_price - exit_policy.breakeven_trigger_r * risk_distance
+                else entry_mid - exit_policy.breakeven_trigger_r * risk_distance
             )
             if exit_policy.breakeven_trigger_r is not None
             else None
@@ -288,7 +318,7 @@ def replay_session(
         if breakeven_level is not None:
             trail_armed = bar.high >= breakeven_level if is_long else bar.low <= breakeven_level
             if trail_armed:
-                new_stop = signal.trigger_price
+                new_stop = entry_mid  # breakeven = where the trade actually got in
                 tighter = max if is_long else min
                 current_stop = tighter(current_stop, new_stop)
                 breakeven_level = None
