@@ -176,3 +176,33 @@ class TestReplayIntegration:
             spec=GBP_USD,
         )
         assert outcome.status is SessionStatus.NO_FEATURES
+
+
+class TestPriorCoverageGuard:
+    """A partially-covered prior window is not 'validated structure' (§0.10):
+    a single bar's open-to-close would gate entries on almost no evidence.
+    """
+
+    def test_single_bar_prior_day_is_not_validated(self, env: dict) -> None:
+        thin = [bar(PRIOR, "08:00", "1.3300", "1.3335", "1.3298", "1.3330")]
+        assert prior_session_structure(series_of([*thin, *TODAY]), DAY, env["clock"]) is None
+
+    def test_late_starting_prior_window_is_not_validated(self, env: dict) -> None:
+        late = [
+            bar(PRIOR, "09:00", "1.3300", "1.3312", "1.3298", "1.3310"),
+            bar(PRIOR, "10:45", "1.3310", "1.3335", "1.3308", "1.3330"),
+        ]
+        assert prior_session_structure(series_of([*late, *TODAY]), DAY, env["clock"]) is None
+
+    def test_strategy_declines_on_uncovered_prior_day(self, env: dict) -> None:
+        thin = [bar(PRIOR, "08:00", "1.3300", "1.3335", "1.3298", "1.3330")]
+        outcome = replay_session(
+            series_of([*thin, *TODAY]),
+            DAY,
+            config=env["config"],
+            clock=env["clock"],
+            engine=env["engine"],
+            manifest=env["manifest"],
+            spec=GBP_USD,
+        )
+        assert outcome.status is SessionStatus.NO_FEATURES

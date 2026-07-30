@@ -15,6 +15,7 @@ import datetime as dt
 import enum
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
+from zoneinfo import ZoneInfo
 
 from trading_firm.config import FirmConfig
 from trading_firm.features.engine import prior_session_structure, session_features
@@ -123,6 +124,27 @@ class ReplayReport:
         return (self.gross_win_usd / self.gross_loss_usd).quantize(CENT)
 
 
+def tradeable_session_dates(series: BarSeries, clock: SessionClock) -> list[dt.date]:
+    """London dates whose Asian window actually holds data.
+
+    A date whose [00:00, asian_range_final) window is empty can never produce
+    features, so counting it inflates the denominator of every published rate
+    (§12.4 honest reporting). The emptiness test is calendar-agnostic — it
+    drops the Sunday 22:00 London reopen bars and market holidays alike,
+    without hard-coding weekday numbers.
+    """
+    london = ZoneInfo("Europe/London")
+    dates = sorted({bar.ts.astimezone(london).date() for bar in series.bars})
+    return [
+        day
+        for day in dates
+        if series.between(
+            dt.datetime.combine(day, dt.time(0, 0), tzinfo=london),
+            clock.boundaries(day)["asian_range_final"],
+        )
+    ]
+
+
 def _pnl(direction: Direction, units: int, entry: Decimal, exit_price: Decimal) -> Decimal:
     move = exit_price - entry if direction is Direction.LONG else entry - exit_price
     return (units * move).quantize(CENT, rounding=ROUND_FLOOR)  # conservative both ways
@@ -181,6 +203,18 @@ def replay_session(
     trigger_bar = signal.triggered_by
     is_long = signal.direction is Direction.LONG
 
+    # §14 gate sees the true FILL moment. A bar's close lands at ts+granularity,
+    # so an at-close entry on the last bar before the cutoff actually fills AT
+    # the cutoff — outside the half-open [activation, entry_cutoff) window.
+    # Feeding this moment to the risk engine makes the existing expiry/window
+    # gates reject it visibly instead of silently accepting a late entry.
+    granularity = dt.timedelta(minutes=series.granularity_minutes)
+    entry_moment = (
+        trigger_bar.ts + granularity
+        if getattr(signal, "entry_at_close", False)
+        else trigger_bar.ts
+    )
+
     # ACHIEVABLE FILL (adversarial-review finding, 2026-07-30).
     # A stop-order entry cannot fill at a price the market has already passed.
     # The Asian range freezes at 07:30 but entries open at 08:00, so when the
@@ -217,14 +251,14 @@ def replay_session(
         entry_price=entry_mid,
         stop_price=signal.stop_price,
         edge_score=RESEARCH_BASELINE_SCORE,
-        created_at=trigger_bar.ts,
+        created_at=entry_moment,
         expires_at=boundaries["entry_cutoff"],
         data_fresh=True,
         news_state_known=True,
         stop_broker_compatible=True,
     )
     account = AccountState(closed_equity=equity, tier_anchor=Decimal("250"))
-    decision = engine.evaluate(candidate, account, spec, trigger_bar.ts)
+    decision = engine.evaluate(candidate, account, spec, entry_moment)
     if not decision.approved:
         return SessionOutcome(session_date, SessionStatus.REJECTED, reasons=decision.reasons)
 
@@ -335,7 +369,7 @@ def replay_session(
     trade = SessionTrade(
         direction=signal.direction,
         units=sizing.units,
-        entry_ts=trigger_bar.ts,
+        entry_ts=entry_moment,
         entry_price=entry_exec,
         exit_ts=exit_ts,
         exit_price=exit_price,

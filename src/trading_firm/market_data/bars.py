@@ -53,8 +53,32 @@ class BarSeries:
         return tuple(b for b in self.bars if start <= b.ts < end)
 
 
+def _absent_weekdays(
+    previous: dt.datetime, current: dt.datetime, session_tz: str
+) -> list[dt.date]:
+    """Weekday session dates lying strictly between two bars, in session_tz.
+
+    A plain Fri->Mon weekend returns [] (only Sat/Sun lie between), so normal
+    market closure is never flagged; a genuinely missing trading day is.
+    """
+    zone = ZoneInfo(session_tz)
+    start = previous.astimezone(zone).date()
+    end = current.astimezone(zone).date()
+    absent: list[dt.date] = []
+    day = start + dt.timedelta(days=1)
+    while day < end:
+        if day.weekday() < 5:
+            absent.append(day)
+        day += dt.timedelta(days=1)
+    return absent
+
+
 def _assemble(
-    instrument: str, granularity_minutes: int, raw: list[tuple[dt.datetime, dict]]
+    instrument: str,
+    granularity_minutes: int,
+    raw: list[tuple[dt.datetime, dict]],
+    *,
+    session_tz: str = "Europe/London",
 ) -> BarSeries:
     events: list[str] = []
     bars: list[Bar] = []
@@ -78,6 +102,18 @@ def _assemble(
                 events.append(
                     f"gap of {gap} before {bar.ts.isoformat()} (expected {step})"
                 )
+            elif gap >= dt.timedelta(hours=24):
+                # Whole missing trading days can NEVER satisfy the intraday
+                # test above, so before this check the largest class of data
+                # loss was structurally invisible — a fixture silently missing
+                # 15 weekdays produced zero quality events (§8.1, iron rule 3).
+                absent = _absent_weekdays(bars[-1].ts, bar.ts, session_tz)
+                if absent:
+                    listed = ", ".join(d.isoformat() for d in absent)
+                    events.append(
+                        f"missing session data: {len(absent)} weekday(s) absent "
+                        f"before {bar.ts.isoformat()}: {listed}"
+                    )
         bars.append(bar)
     return BarSeries(
         instrument=instrument,

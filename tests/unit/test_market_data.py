@@ -114,3 +114,52 @@ class TestBetween:
         assert len(series.between(start, end)) == 1  # end excluded
         with pytest.raises(ValueError):
             series.between(start.replace(tzinfo=None), end)
+
+
+class TestMissingSessionDetection:
+    """A whole missing trading day produces a gap >= 24h, which the intraday
+    gap test can never flag. Before this detector a committed fixture silently
+    missing 15 weekdays emitted zero events about them (§8.1, iron rule 3).
+    """
+
+    def test_missing_weekday_is_flagged(self) -> None:
+        # Fri 2026-04-10 -> Wed 2026-04-15: Mon 13th and Tue 14th are absent.
+        rows = [
+            fmp_row("2026-04-10 10:00:00", "1.33", "1.34", "1.32", "1.335"),
+            fmp_row("2026-04-15 10:00:00", "1.33", "1.34", "1.32", "1.335"),
+        ]
+        series = from_fmp_rows(
+            rows, instrument="GBP_USD", granularity_minutes=15, source_tz="UTC"
+        )
+        missing = [e for e in series.quality_events if "missing session data" in e]
+        assert len(missing) == 1
+        assert "2026-04-13" in missing[0]
+        assert "2026-04-14" in missing[0]
+        assert "2 weekday(s)" in missing[0]
+
+    def test_plain_weekend_emits_nothing(self) -> None:
+        # Fri -> Mon: only Sat/Sun lie between, so normal closure stays silent.
+        rows = [
+            fmp_row("2026-07-24 16:45:00", "1.33", "1.34", "1.32", "1.335"),
+            fmp_row("2026-07-27 08:00:00", "1.33", "1.34", "1.32", "1.335"),
+        ]
+        series = from_fmp_rows(
+            rows, instrument="GBP_USD", granularity_minutes=15, source_tz="UTC"
+        )
+        assert not any("missing session data" in e for e in series.quality_events)
+
+    def test_oanda_candles_share_the_detector(self) -> None:
+        def candle(time: str) -> dict:
+            return {
+                "time": time,
+                "complete": True,
+                "volume": 10,
+                "mid": {"o": "1.33", "h": "1.34", "l": "1.32", "c": "1.335"},
+            }
+
+        series = from_oanda_candles(
+            [candle("2026-04-10T10:00:00Z"), candle("2026-04-15T10:00:00Z")],
+            instrument="GBP_USD",
+            granularity_minutes=15,
+        )
+        assert any("missing session data" in e for e in series.quality_events)

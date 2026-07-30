@@ -12,7 +12,7 @@ import pytest
 
 from trading_firm.config import BASE_CONFIG_PATH, load_config
 from trading_firm.market_data.bars import Bar, BarSeries
-from trading_firm.models import InstrumentSpec
+from trading_firm.models import Direction, InstrumentSpec
 from trading_firm.research import ExitPolicy, replay_session
 from trading_firm.research.replay import TradeOutcome
 from trading_firm.risk import RiskEngine
@@ -118,8 +118,11 @@ class TestBreakevenTrail:
         assert outcome.trade.pnl_usd == Decimal("-2.50")  # exactly the approved risk
 
     def test_stop_never_widens(self, env: dict) -> None:
-        # With the trail armed, the effective stop is entry (1.3342) — never
-        # below the original 1.3302 for a long (§0.7 invariant).
+        # With the trail armed the effective stop is the entry (1.3342), so a
+        # dip to 1.3341 exits AT breakeven rather than riding to the original
+        # 1.3302 (§0.7). Asserted by exact value: the previous `>= 1.3301`
+        # bound was tautological — the arrangement satisfied it whether or not
+        # the trail did anything.
         bars = [
             *ASIAN,
             TRIGGER,
@@ -127,8 +130,13 @@ class TestBreakevenTrail:
             bar("08:45", "1.3380", "1.3382", "1.3341", "1.3345"),  # touches 1.3342
         ]
         policy = ExitPolicy(target_r=Decimal("1.5"), breakeven_trigger_r=Decimal("1.0"))
-        outcome = run(env, bars, policy)
-        assert outcome.trade.exit_price >= Decimal("1.3301")
+        trade = run(env, bars, policy).trade
+        assert trade.outcome is TradeOutcome.STOP
+        assert trade.exit_ts == bars[-1].ts
+        assert trade.exit_price == Decimal("1.3341")  # entry 1.3342 - half spread
+        assert trade.pnl_usd == Decimal("-0.12")  # spread only
+        # and the untrailed champion on the same bars does NOT stop out here
+        assert run(env, bars, None).trade.outcome is not TradeOutcome.STOP
 
 
 class TestTargetOverride:
@@ -153,3 +161,85 @@ class TestTargetOverride:
         default = run(env, bars, None)
         explicit = run(env, bars, ExitPolicy(target_r=Decimal("1.5")))
         assert default.trade.pnl_usd == explicit.trade.pnl_usd == Decimal("3.45")
+
+
+class TestShortSideExits:
+    """The SHORT half of ExitPolicy had no coverage at all: sign flips and
+    max/min swaps in the short target/trail arithmetic survived the suite.
+
+    Mirror session: Asian range 1.3300-1.3340, SHORT trigger 1.3298, stop
+    1.3338 (40-pip risk).
+    """
+
+    SHORT_TRIGGER = bar("08:15", "1.3305", "1.3320", "1.3297", "1.3299")
+
+    def test_short_target_override_resolves(self, env: dict) -> None:
+        bars = [
+            *ASIAN,
+            self.SHORT_TRIGGER,
+            bar("08:30", "1.3299", "1.3300", "1.3256", "1.3260"),  # 1.0R = 1.3258
+        ]
+        outcome = run(env, bars, ExitPolicy(target_r=Decimal("1.0")))
+        trade = outcome.trade
+        assert trade.direction is Direction.SHORT
+        assert trade.outcome is TradeOutcome.TARGET
+        # short exits by buying: target + half spread
+        assert trade.exit_price == Decimal("1.3259")
+        assert trade.pnl_usd > 0
+
+    def test_short_breakeven_trail_exits_at_entry(self, env: dict) -> None:
+        # Falls to +1R (1.3258) arming the trail, then rallies back through
+        # entry: the trail must exit at breakeven, not ride to the 1.3338 stop.
+        bars = [
+            *ASIAN,
+            self.SHORT_TRIGGER,
+            bar("08:30", "1.3299", "1.3300", "1.3256", "1.3260"),  # arms
+            bar("08:45", "1.3260", "1.3310", "1.3258", "1.3305"),  # back through entry
+        ]
+        policy = ExitPolicy(target_r=Decimal("2.0"), breakeven_trigger_r=Decimal("1.0"))
+        trade = run(env, bars, policy).trade
+        assert trade.outcome is TradeOutcome.STOP
+        assert trade.exit_ts == bars[-1].ts
+        assert trade.exit_price == Decimal("1.3299")  # entry 1.3298 + half spread
+        assert -trade.pnl_usd < trade.allowed_risk_usd  # spread only, not full risk
+
+    def test_short_trail_only_tightens(self, env: dict) -> None:
+        # With the trail armed, the effective stop is the entry (1.3298) —
+        # never back out to the original 1.3338 (§0.7).
+        bars = [
+            *ASIAN,
+            self.SHORT_TRIGGER,
+            bar("08:30", "1.3299", "1.3300", "1.3256", "1.3260"),
+            bar("08:45", "1.3260", "1.3299", "1.3258", "1.3290"),  # touches entry
+        ]
+        policy = ExitPolicy(target_r=Decimal("2.0"), breakeven_trigger_r=Decimal("1.0"))
+        trade = run(env, bars, policy).trade
+        assert trade.exit_price <= Decimal("1.3299")
+
+
+class TestSameBarStopPriority:
+    """A bar containing BOTH stop and target must resolve as STOP — the
+    engine's core conservative-fill invariant, previously unpinned: swapping
+    the check order left every test green.
+    """
+
+    def test_stop_wins_when_one_bar_holds_both(self, env: dict) -> None:
+        bars = [
+            *ASIAN,
+            TRIGGER,
+            # spans 1.3302 stop AND the 1.5R target 1.3402 in a single bar
+            bar("08:30", "1.3341", "1.3410", "1.3295", "1.3400"),
+        ]
+        trade = run(env, bars, None).trade
+        assert trade.outcome is TradeOutcome.STOP
+        assert trade.pnl_usd == Decimal("-2.50")  # full approved risk, not a win
+
+    def test_stop_priority_holds_for_shorts(self, env: dict) -> None:
+        short_trigger = bar("08:15", "1.3305", "1.3320", "1.3297", "1.3299")
+        bars = [
+            *ASIAN,
+            short_trigger,
+            bar("08:30", "1.3299", "1.3345", "1.3230", "1.3240"),  # stop 1.3338 + target
+        ]
+        trade = run(env, bars, None).trade
+        assert trade.outcome is TradeOutcome.STOP

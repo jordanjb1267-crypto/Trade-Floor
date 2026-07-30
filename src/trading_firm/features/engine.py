@@ -117,14 +117,21 @@ def prior_session_structure(
 
     Walks back at most MAX_PRIOR_LOOKBACK_DAYS calendar days (weekends and
     holidays have no bars and are skipped). Fail closed (§0.10): no prior
-    data -> None -> no candidates.
+    data — or only a PARTIALLY covered prior window — yields None, hence no
+    candidates.
     """
     current_activation = clock.boundaries(session_date)["activation"]
+    step = dt.timedelta(minutes=series.granularity_minutes)
     for back in range(1, MAX_PRIOR_LOOKBACK_DAYS + 1):
         prior_date = session_date - dt.timedelta(days=back)
         prior = clock.boundaries(prior_date)
         bars = series.between(prior["activation"], prior["flatten"])
         if not bars:
+            continue
+        # A partially-covered prior window is not "validated structure": a
+        # single bar's open-to-close would gate live entries on almost no
+        # evidence. Treat it as no data and keep walking back (§0.10).
+        if bars[0].ts > prior["activation"] + step or bars[-1].ts < prior["flatten"] - step:
             continue
         return PriorSessionStructure(
             feature_version=STRUCTURE_FEATURES_VERSION,

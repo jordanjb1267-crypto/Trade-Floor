@@ -16,6 +16,7 @@ Practice-feed caveat (F-5): spreads here are usable for modeling; fills and
 slippage are not represented. NOT validation (§12.4).
 """
 
+import argparse
 import datetime as dt
 import json
 import statistics
@@ -45,12 +46,30 @@ def describe(label: str, values: list[Decimal]) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(__doc__)
-        return 2
-    fixture = json.loads(Path(sys.argv[1]).read_text())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("fixture")
+    parser.add_argument("--from", dest="date_from", help="inclusive ISO date (UTC)")
+    parser.add_argument("--to", dest="date_to", help="inclusive ISO date (UTC)")
+    args = parser.parse_args()
+
+    fixture = json.loads(Path(args.fixture).read_text())
     meta = fixture["meta"]
-    print(f"{meta['instrument']} {meta['granularity_minutes']}m from {meta['host']}")
+    lo = dt.date.fromisoformat(args.date_from) if args.date_from else None
+    hi = dt.date.fromisoformat(args.date_to) if args.date_to else None
+    if lo or hi:
+        kept = []
+        for candle in fixture["candles"]:
+            day = dt.datetime.fromisoformat(
+                str(candle["time"]).replace("Z", "+00:00")
+            ).astimezone(dt.UTC).date()
+            if (lo is None or day >= lo) and (hi is None or day <= hi):
+                kept.append(candle)
+        fixture["candles"] = kept
+    window = f" [{lo or 'start'}..{hi or 'end'}]" if (lo or hi) else ""
+    print(
+        f"{meta['instrument']} {meta['granularity_minutes']}m from {meta['host']}"
+        f"{window}: {len(fixture['candles'])} candles"
+    )
 
     by_london_hour: dict[int, list[Decimal]] = {}
     asian: list[Decimal] = []

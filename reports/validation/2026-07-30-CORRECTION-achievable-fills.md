@@ -120,6 +120,59 @@ just does not do enough to matter.
 - **Continuation's registered hypothesis survives but weakens**: 9 trades,
   PF 1.46 (was 1.72). It was never evidence and still is not.
 
+
+## Second pass (same day): denominators, data-quality blindness, test gaps
+
+A follow-up adversarial pass verified the first review's 13 unverified
+lower-severity claims: **9 confirmed, 1 refuted.** None changes a P&L figure;
+two change what the published tables *claim about their own evidence*.
+
+**Denominators were inflated ~19%.** `sessions=N` counted Sunday-reopen dates
+that can never produce features. Honest counts: **GBP 105 → 88**, **EUR 45 →
+38**. Every rate-style statement built on them was understated — e.g.
+sweep-reversal EUR "3 setups in 45 sessions" is really 3 in 38. All P&L,
+W/L/F, PF and drawdown cells are unchanged. `tradeable_session_dates()` now
+derives the denominator from whether a date's Asian window actually holds
+data, and both scripts use it.
+
+| Strategy / pair | sessions (published → honest) | trades | net |
+|---|---|---|---|
+| london_breakout GBP | 105 → **88** | 64 | −$11.53 |
+| london_breakout EUR | 45 → **38** | 17 | −$0.24 |
+| sweep_reversal GBP | 105 → **88** | 26 | +$2.05 |
+| sweep_reversal EUR | 45 → **38** | 3 | −$3.28 |
+| london_continuation GBP | 105 → **88** | 9 | +$1.44 |
+| london_continuation EUR | 45 → **38** | 2 | −$0.70 |
+
+**The data-quality control was blind to whole missing days.** `_assemble`
+flagged only gaps *under* 24 hours, so a missing trading day — the largest
+class of data loss — could never be reported. The committed FMP GBP fixture
+is missing **15 weekdays** (fortnightly Mon+Tue pairs plus the whole week of
+2026-06-22, a fetch artifact) and emitted **zero** events about it. The
+detector now reports absent weekdays explicitly and stays silent on ordinary
+weekends; it fires 6 events on that fixture and **0 on the canonical OANDA
+fixture, which is verified complete** — so no corrected headline number is
+affected. The §12.4 challenger split, computed on the FMP file, described
+date ranges ~20% more complete than the data behind them.
+
+**Fail-closed gaps closed:** `prior_session_structure` accepted a
+single-bar prior day as "validated structure" gating continuation entries;
+at-close entries could fill exactly AT the 10:30 cutoff, outside the §14
+half-open entry window. Both now fail closed. No committed session hit
+either, so no number moves.
+
+**Test blindness fixed.** Mutation testing proved these paths were unguarded:
+the entire SHORT side of `ExitPolicy`, SHORT breakout stop-cap construction,
+same-bar stop priority (the core conservative-fill invariant), and the
+spread-field reader. `test_stop_never_widens` asserted a bound its own setup
+guaranteed — it named the §0.7 iron rule and tested nothing. All now pinned
+by exact value. Suite 236 → 253.
+
+**Refuted:** the claim that the sweep-reversal golden-number comment was
+arithmetically inconsistent. Every figure reproduces against the real engine;
+no change made. Recording refutations matters as much as findings — acting on
+an unverified claim is how correct code gets "fixed" into incorrect code.
+
 ## Lesson (recorded in the decision log)
 
 The execution layer got an adversarial review and yielded 21 defects. The
