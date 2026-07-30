@@ -184,6 +184,30 @@ unchanged: `scripts/verify_oanda_demo.py` then
 adapter (practice host only, risk-gated, stop-attached, idempotent). No
 code adopts either schema.
 
+**2026-07-30 · Relay-handler implementation reviewed; order relay declined,
+read path redirected.** Following the declined tool schemas (previous
+entry), the owner supplied a Python relay handler (`handle_claude_tool_call`)
+that would forward Claude-emitted OANDA calls with injected auth headers.
+Review outcome: (a) non-functional as written — both URL builders produce
+malformed addresses from the schema's scheme-less enum values, the
+Exchange-Rates path invents an auth header for a separate paid product a
+v20 token cannot access, placeholder-token fallbacks send garbage
+credentials instead of failing closed, and a POST timeout after an order
+lands is surfaced as a retryable error (the duplicate-position defect class
+from the 21-finding review); (b) the order-relay half is the §0 iron-rule-1
+LLM order path regardless of which process performs the HTTP call — the LLM
+would compose and authorize, the script would blindly relay — declined, no
+fix makes it acceptable; (c) the read half is already served by the shipped
+read-only MCP bundle (`mcp/oanda-practice` v0.1.1: candles, pricing,
+account, positions, orders-read, transactions; no order tools by design).
+Gap filled instead: `scripts/fetch_oanda_candles.py`, a deterministic
+read-only fixture fetcher (practice host hard-coded, no environment
+parameter — live routing unrepresentable; token via env, fail-closed on
+missing token or unreachable host, verified in-VM) that preserves raw
+mid/ask/bid so research can use measured spreads instead of the 2-pip
+assumption. Pure logic in `market_data/candle_fixture.py`, unit-tested
+against canned payloads; suite 206.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access

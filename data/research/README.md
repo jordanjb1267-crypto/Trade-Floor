@@ -20,6 +20,16 @@ drives live behavior).
   engine's conservative 2-pip assumption, not from measured per-bar
   spreads (F-3/F-5 measured 1.5–2.0 pips in-session on practice).
 
+## `*_M5_oanda_practice_*.json` (none committed yet)
+
+Fetched by `scripts/fetch_oanda_candles.py` (read-only, practice host only,
+token via `OANDA_DEMO_API_TOKEN`). Shape: `{"meta": {...}, "candles": [...]}`
+with raw OANDA mid/ask/bid blocks preserved — real measured spreads for
+research, unlike the FMP mid-only series. Timestamps are RFC3339 UTC from
+the API (no D-7 pinning question). Practice-feed caveat (F-5): usable for
+spread modeling; fills and slippage require live/licensed data. Normalize
+with `from_oanda_candles` on the `candles` list.
+
 Run a replay:
 
 ```bash
