@@ -1,7 +1,7 @@
 # Constitution
 
 The firm's constitution is the governing specification:
-**`docs/spec/CLAUDE_LONDON_TRADING_FIRM_MASTER_HANDOFF_v1.1.3.md`**.
+**`docs/spec/CLAUDE_LONDON_TRADING_FIRM_MASTER_HANDOFF_v1.1.4.md`**.
 This file is a pointer and amendment ledger, not a restatement — one source
 of truth, no divergence.
 
@@ -24,7 +24,7 @@ A spec change requires: a version bump, a row in the spec's §28.1
 changelist, a dated entry in `governance/decision-log.md`, and — for any
 change that weakens a control or grants a permission — explicit owner
 approval recorded in `governance/approvals/`. Corrections driven by audit
-evidence follow the same path (see v1.1.1–v1.1.3 for worked examples,
+evidence follow the same path (see v1.1.1–v1.1.4 for worked examples,
 including a superseded finding preserved unedited per §0.11).
 
 ## Version lineage
@@ -37,3 +37,4 @@ including a superseded finding preserved unedited per §0.11).
 | v1.1.1 | 2026-07-29 | Audit F-1: per-instrument margin rates govern sizing |
 | v1.1.2 | 2026-07-29 | Audit F-4 (later superseded) |
 | v1.1.3 | 2026-07-29 | Audit F-5 corrects F-4; rollover hazard codified |
+| v1.1.4 | 2026-07-30 | A-1: §12.7 mandatory adversarial review of research code |
