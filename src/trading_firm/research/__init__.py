@@ -4,6 +4,14 @@ from trading_firm.research.replay import (
     SessionOutcome,
     replay_range,
     replay_session,
+    tradeable_session_dates,
 )
 
-__all__ = ["ExitPolicy", "ReplayReport", "SessionOutcome", "replay_range", "replay_session"]
+__all__ = [
+    "ExitPolicy",
+    "ReplayReport",
+    "SessionOutcome",
+    "replay_range",
+    "replay_session",
+    "tradeable_session_dates",
+]

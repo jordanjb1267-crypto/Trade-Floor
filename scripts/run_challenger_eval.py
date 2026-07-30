@@ -46,7 +46,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from trading_firm.config import BASE_CONFIG_PATH, load_config  # noqa: E402
 from trading_firm.market_data import from_fmp_rows  # noqa: E402
 from trading_firm.models import InstrumentSpec  # noqa: E402
-from trading_firm.research import ExitPolicy, ReplayReport, replay_range  # noqa: E402
+from trading_firm.research import (  # noqa: E402
+    ExitPolicy,
+    ReplayReport,
+    replay_range,
+    tradeable_session_dates,
+)
 from trading_firm.risk import RiskEngine  # noqa: E402
 from trading_firm.sessions import SessionClock  # noqa: E402
 from trading_firm.strategies import load_manifests  # noqa: E402
@@ -98,12 +103,9 @@ def main() -> int:
     )["london_breakout"]
     spec = InstrumentSpec(name="GBP_USD", margin_rate=Decimal("0.05"))
 
-    session_dates = sorted(
-        {
-            dt.datetime.fromisoformat(r["date"]).replace(tzinfo=NY).astimezone(LONDON).date()
-            for r in rows
-        }
-    )
+    # Dates whose Asian window actually holds data — a Sunday-reopen date can
+    # never produce features and must not enter the split (§12.4).
+    session_dates = tradeable_session_dates(series, clock)
     last_bar_london = series.bars[-1].ts.astimezone(LONDON)
     session_dates = [
         d for d in session_dates

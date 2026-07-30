@@ -19,7 +19,6 @@ Output is a framework replay report — NOT validation (§12.4, §12.6).
 
 import json
 import sys
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -29,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from trading_firm.config import BASE_CONFIG_PATH, load_config  # noqa: E402
 from trading_firm.market_data import SpreadSeries, from_fmp_rows, from_oanda_candles  # noqa: E402
 from trading_firm.models import InstrumentSpec  # noqa: E402
-from trading_firm.research import replay_range  # noqa: E402
+from trading_firm.research import replay_range, tradeable_session_dates  # noqa: E402
 from trading_firm.research.replay import SessionStatus  # noqa: E402
 from trading_firm.risk import RiskEngine  # noqa: E402
 from trading_firm.sessions import SessionClock  # noqa: E402
@@ -37,7 +36,6 @@ from trading_firm.strategies import load_manifests  # noqa: E402
 
 SOURCE_TZ = "America/New_York"
 LONDON = ZoneInfo("Europe/London")
-NY = ZoneInfo(SOURCE_TZ)
 
 
 def main() -> int:
@@ -59,21 +57,17 @@ def main() -> int:
         )
         spreads = SpreadSeries.from_oanda_candles(payload["candles"], instrument=instrument)
         print("costs: measured per-bar spreads (sizing still uses the flat assumption)")
-        session_dates = sorted({b.ts.astimezone(LONDON).date() for b in series.bars})
     else:
         series = from_fmp_rows(
             payload, instrument=instrument, granularity_minutes=5, source_tz=SOURCE_TZ
-        )
-        session_dates = sorted(
-            {
-                datetime.fromisoformat(r["date"]).replace(tzinfo=NY).astimezone(LONDON).date()
-                for r in payload
-            }
         )
     print(f"{instrument}: {len(series.bars)} bars, {len(series.quality_events)} quality events")
 
     config = load_config(BASE_CONFIG_PATH)
     clock = SessionClock(config.session)
+    # Dates whose Asian window actually has data. Counting Sunday-reopen dates
+    # that can never produce features would inflate every published rate.
+    session_dates = tradeable_session_dates(series, clock)
     engine = RiskEngine(config, clock)
     manifest = load_manifests(
         BASE_CONFIG_PATH.parents[1] / "research" / "strategies"

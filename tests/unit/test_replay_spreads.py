@@ -120,17 +120,22 @@ class TestMeasuredSpreads:
 
 class TestSpreadSeriesFromCandles:
     def test_builds_from_mab_candles_and_rejects_mid_only(self) -> None:
+        # Each OHLC field carries a DISTINCT spread, so reading the wrong one
+        # (o/h/l instead of c) changes the answer. The previous fixture used a
+        # uniform 2-pip spread across all four fields, which made the test
+        # blind to exactly that mutation.
         candles = [
             {
                 "time": "2026-07-01T08:00:00.000000000Z",
                 "complete": True,
                 "mid": {"o": "1.33", "h": "1.34", "l": "1.32", "c": "1.335"},
-                "ask": {"o": "1.3301", "h": "1.3401", "l": "1.3201", "c": "1.3351"},
-                "bid": {"o": "1.3299", "h": "1.3399", "l": "1.3199", "c": "1.3349"},
+                "ask": {"o": "1.3304", "h": "1.3406", "l": "1.3208", "c": "1.3351"},
+                "bid": {"o": "1.3296", "h": "1.3394", "l": "1.3192", "c": "1.3349"},
             }
         ]
         series = SpreadSeries.from_oanda_candles(candles, instrument="GBP_USD")
         ts = dt.datetime(2026, 7, 1, 8, 0, tzinfo=dt.UTC)
+        # close spread is 2 pips; open would be 8, high 12, low 16
         assert series.at(ts) == Decimal("0.0002")
         with pytest.raises(ValueError, match="bid/ask"):
             SpreadSeries.from_oanda_candles(

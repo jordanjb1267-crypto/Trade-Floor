@@ -376,6 +376,36 @@ Adversarial review is now mandatory for RESEARCH code before any number it
 produces is published, not only for order-path code. Correction:
 `reports/validation/2026-07-30-CORRECTION-achievable-fills.md`.
 
+**2026-07-30 · Second adversarial pass: 9 of 13 lower-severity findings
+confirmed; denominators and data-quality blindness corrected.** The first
+review left 13 claims unverified; a 10-agent refutation-default pass settled
+them — 9 confirmed, 1 REFUTED (the sweep-reversal golden-number comment
+reproduces exactly; no change made — recording refutations matters as much
+as findings, since acting on an unverified claim is how correct code gets
+"fixed" into incorrect code). No P&L figure moved; two things the tables
+CLAIMED about their own evidence did. (1) Denominators counted Sunday-reopen
+dates that can never produce features, inflating every rate ~19%: GBP 105 →
+88, EUR 45 → 38 tradeable sessions. `tradeable_session_dates()` now derives
+the denominator from whether a date's Asian window holds data, used by both
+scripts. (2) The market-data quality control was structurally blind to whole
+missing days — `_assemble` flagged only sub-24h gaps, so the largest class of
+data loss could never fire. The committed FMP GBP fixture is missing 15
+weekdays (fortnightly Mon+Tue pairs plus the week of 06-22, a fetch artifact)
+and emitted ZERO events about it; the §12.4 challenger split described date
+ranges ~20% more complete than its data. The detector now reports absent
+weekdays and stays silent on ordinary weekends — 6 events on that fixture, 0
+on the canonical OANDA fixtures, which are verified complete, so no corrected
+headline number is affected. Fail-closed gaps closed: prior_session_structure
+accepted a single-bar prior day as "validated structure"; at-close entries
+could fill exactly AT the 10:30 cutoff, outside the §14 half-open window.
+Mutation testing proved four paths unguarded — the entire SHORT side of
+ExitPolicy, SHORT breakout stop-cap construction, same-bar stop priority, and
+the spread-field reader — and that test_stop_never_widens asserted a bound
+its own setup guaranteed (it named the §0.7 iron rule and tested nothing).
+All now pinned by exact value. data/research/README.md documents the FMP
+holes. Suite: 236 → 255. Correction report updated with a second-pass
+section.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a

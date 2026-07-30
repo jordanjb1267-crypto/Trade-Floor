@@ -13,8 +13,15 @@ drives live behavior).
   old under NY and hours wrong under UTC/London/Chicago. Always pass
   `source_tz="America/New_York"` to `from_fmp_rows`.
 - **Content:** deduplicated bars trimmed to the London trading-day slice
-  (00:00–11:05 Europe/London), covering 2026-06-10 → 2026-07-29 session
-  dates for GBPUSD and EURUSD.
+  (00:00–11:05 Europe/London). GBPUSD covers 2026-04-01 → 2026-07-30 and
+  EURUSD 2026-06-10 → 2026-07-30 (London session dates).
+- **⚠ Known holes (GBPUSD):** 15 weekdays are ABSENT — 2026-04-13/14,
+  04-27/28, 05-11/12, 05-25/26, 06-08/09 and the whole week 06-22…26 — a
+  fetch/pagination artifact, not holidays. A further 7 sessions start at
+  05:00 London instead of 00:00, so their Asian window is missing and they
+  fail closed as NO_FEATURES. `from_fmp_rows` now emits explicit
+  `missing session data` quality events for the absent weekdays; check them
+  before quoting coverage. The canonical OANDA fixtures have no such holes.
 - **Prices:** single mid-like series (FMP does not publish bid/ask for
   these bars). Spread costs in replay therefore come from the sizing
   engine's conservative 2-pip assumption, not from measured per-bar

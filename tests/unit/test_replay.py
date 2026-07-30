@@ -17,7 +17,7 @@ import pytest
 from trading_firm.config import BASE_CONFIG_PATH, load_config
 from trading_firm.market_data.bars import Bar, BarSeries
 from trading_firm.models import Direction, InstrumentSpec
-from trading_firm.research import replay_range, replay_session
+from trading_firm.research import replay_range, replay_session, tradeable_session_dates
 from trading_firm.research.replay import SessionStatus, TradeOutcome
 from trading_firm.risk import RiskEngine
 from trading_firm.sessions import SessionClock
@@ -200,3 +200,33 @@ class TestReplayRange:
                 manifest=unknown,
                 spec=env["spec"],
             )
+
+
+class TestTradeableSessionDates:
+    """Sunday-reopen bars create a London date that can never produce
+    features. Counting it inflates the denominator of every published rate
+    (§12.4 honest reporting).
+    """
+
+    def test_sunday_reopen_bars_do_not_count_as_a_session(self, env: dict) -> None:
+        sunday = dt.date(2026, 7, 26)  # Sunday
+        monday = dt.date(2026, 7, 27)
+        bars = [
+            # Sunday 22:00 London reopen — no 00:00-07:30 Asian window
+            bar(sunday, "22:00", "1.3300", "1.3310", "1.3295", "1.3305"),
+            bar(sunday, "23:00", "1.3305", "1.3312", "1.3300", "1.3308"),
+            *asian_bars(monday),
+            trigger_bar(monday),
+        ]
+        series = BarSeries(
+            instrument="GBP_USD",
+            granularity_minutes=15,
+            bars=tuple(sorted(bars, key=lambda b: b.ts)),
+        )
+        raw = sorted({b.ts.astimezone(LONDON).date() for b in series.bars})
+        assert raw == [sunday, monday]  # the naive denominator counts both
+        assert tradeable_session_dates(series, env["clock"]) == [monday]
+
+    def test_covered_weekday_survives_the_filter(self, env: dict) -> None:
+        # Guard against over-filtering: a normal session must be kept.
+        assert WIN_DAY in tradeable_session_dates(env["series"], env["clock"])
