@@ -28,6 +28,17 @@ receive Exceptional risk) and **evidence** E0–E5 (§5.2 — a class sets a cei
 on the tier the risk gate may consider, never an authorization of size). The
 three named strategies are now a specialist bench, not the firm's mandate.
 
+**Conviction is earned; the risk gate is pressure-blind (A-2, §5.1, §6.6).**
+The firm is expected to *claim the evidence it holds* — under-classifying is a
+calibration error scored symmetrically with over-classifying, because
+over-sizing is already structurally impossible while under-sizing was
+invisible. That expectation is bounded absolutely: classification must be a
+**pure function of the Market State Packet**, identical across firm states
+(§21 requires the test). Equity, elapsed days, session or cumulative P&L, and
+progress toward any aspiration reach only the risk gate, where they may lower
+allowed risk and never raise it. Conviction is a claim about evidence, never
+about need — §3.5 and §0 rules 6 and 7 win wherever they appear to conflict.
+
 **Research code is publication-gated (§12.7, amendment A-1).** No number a
 research script produces may enter a validation report, a promotion record,
 or a §12.6 evidence count until the code paths producing it have passed an
