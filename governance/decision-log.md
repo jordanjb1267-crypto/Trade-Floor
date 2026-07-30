@@ -112,6 +112,23 @@ freshness doubt makes news_state_known false. Briefing and post-session
 review workflows added as commands; §7.4 model-routing policy recorded in
 governance. 171 tests pass.
 
+**2026-07-30 · Adversarial review of the execution layer; 21 findings
+fixed.** A multi-agent adversarial review (two independent lenses + a
+refutation-default verifier) confirmed 21 defects in the Phase 4 execution
+code — 5 critical, 10 major, 6 minor, 0 refuted. Highlights: the UNKNOWN
+resolution path could authorize duplicate positions (pending-order lookup
+404s for instantly-filled market orders); client order ids collided for
+distinct same-day candidates, silently swallowing a second trade and
+raising a false STOP_MISSING kill-switch; real-transport connection
+failures bypassed UNKNOWN handling entirely; the fake broker diverged from
+OANDA's API in exactly the code paths meant to prevent duplicates, so tests
+validated shapes OANDA never sends; reconciliation skipped §18 step 4
+(stop verification). All fixed in one commit with regression tests per
+finding; suite grew from 171 to 194. Lesson recorded: unit tests against a
+too-friendly fake prove intent, not integration truth — the live practice
+lifecycle run (Phase 4 remaining item) and periodic adversarial review are
+both mandatory before Phase 6.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; re-enable the upgraded FMP connector (or select the historical tick
