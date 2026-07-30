@@ -304,6 +304,23 @@ practice order-lifecycle run was delegated to a fresh session
 claude/practice-lifecycle-evidence. Report:
 `reports/validation/2026-07-30-sweep-reversal-v0.1.0-baseline.md`.
 
+**2026-07-30 · london_continuation v0.1.0 implemented; research roster
+complete (headless).** The third declared strategy gained rules built as a
+one-variable experiment: identical champion mechanics plus a single
+trend-alignment filter (prior London-window |net move| ≥ 20 pips, from the
+new no-lookahead structure_features_v1; fail closed when no prior data).
+First-guess parameters declared before any replay. Baseline on the
+canonical feed with measured costs: GBP_USD 9 trades (14% of the
+champion's 65 on identical data) 6W/3L net +$1.94 PF 1.72 maxDD $2.00;
+EUR_USD 2 trades. 9 trades decides nothing — recorded as a registered
+hypothesis (trend-aligned breakouts may be the good breakouts) and the
+strategy's single first look; the GBP sample's cumulative §12.4 ledger now
+reads: breakout baseline + 3 spent exit tests + sweep first look +
+continuation first look. Suite: 228. Also: lifecycle attempt 1 produced no
+push; attempt 2 of 2 fired ~14:18 UTC with push-evidence-first
+instructions. Report:
+`reports/validation/2026-07-30-london-continuation-v0.1.0-baseline.md`.
+
 **2026-07-30 · Phase 4 practice order-lifecycle run attempted; FAILED
 CLOSED (no token, no network contact).** The delegated fresh session ran
 the pre-run gate (219 tests green from a clean `main` checkout) and then
@@ -316,7 +333,9 @@ the fail-closed guard itself behaved exactly as designed. Evidence:
 `docs/audits/2026-07-30-practice-order-lifecycle.md` (branch
 `claude/practice-lifecycle-evidence`). The standing to-do remains open;
 prerequisites unchanged (rotated practice token in the environment, egress
-policy allowing the practice host).
+policy allowing the practice host). ROOT CAUSE for the owner: the
+environment's variables do not include `OANDA_DEMO_API_TOKEN` — adding it
+(rotated value) makes the run a one-command re-fire.
 
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
