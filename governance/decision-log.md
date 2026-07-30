@@ -48,6 +48,19 @@ Protection hook verified live during its own installation: it blocked a test
 file containing a static credential-shaped string (test rewritten to build
 such strings at runtime).
 
+**2026-07-30 · Phase 2 delivered (owner instruction "continue").** Offline
+deterministic core per §22: domain models (Decimal money, frozen dataclasses);
+London-anchored session clock with DST-divergence handling, ISO-week keys, and
+the F-5 rollover blackout; capital manager (anchor doubling, drawdown-state
+machine, owner-approved pending promotions with 7-day lapse, deposit
+exclusion); risk engine implementing the §3.3 minimum across tier/fraction/
+session/weekly/margin capacities with per-instrument margin rates (F-1) and
+the §5.3 exceptional gates; sizing engine (stop-first, spread-inclusive,
+round-down, margin defense-in-depth); hash-chained audit log with tamper
+detection; SQLite/WAL migration layer with the first decision-trail schema.
+104 unit tests pass, including F-1 golden numbers (GBP_USD exceptional
+margin-capacity $2.81 vs EUR_USD $8.22 at a 25-pip stop on $250).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`.

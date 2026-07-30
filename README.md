@@ -18,3 +18,12 @@ Working repository for the **Claude London Trading Firm** project.
 ```bash
 pip install -e ".[dev]" && pytest && ruff check src tests scripts
 ```
+
+## Phase 2 — offline deterministic core
+
+- [`src/trading_firm/models.py`](src/trading_firm/models.py) — domain models; Decimal money; §5.2 tier-from-score
+- [`src/trading_firm/sessions/clock.py`](src/trading_firm/sessions/clock.py) — London-anchored session clock; DST divergence; ISO-week keys (D-6); 21:00 UTC rollover blackout (F-5)
+- [`src/trading_firm/risk/`](src/trading_firm/risk/) — capital manager (§4: drawdown states, owner-approved promotions) and the risk engine (§3.3 minimum over five capacities, per-instrument margin — F-1)
+- [`src/trading_firm/sizing/engine.py`](src/trading_firm/sizing/engine.py) — stop-first sizing, spread-inclusive, round-down, margin defense-in-depth
+- [`src/trading_firm/audit/`](src/trading_firm/audit/) — hash-chained append-only log + SQLite/WAL migrations ([`database/migrations/`](database/migrations/))
+- 104 unit tests (`tests/unit/`), incl. audited golden numbers and DST-divergence dates
