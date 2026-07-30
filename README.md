@@ -42,3 +42,10 @@ pip install -e ".[dev]" && pytest && ruff check src tests scripts
 - [`tests/failure_injection/`](tests/failure_injection/) + [`tests/acceptance/`](tests/acceptance/) — §21 drills: timeouts, dropped stops, desync; no order bypasses the risk engine
 - [`scripts/broker_sandbox_lifecycle.py`](scripts/broker_sandbox_lifecycle.py) — guarded 1-unit demo order lifecycle against the practice account (requires network + token)
 - **157 tests total**
+
+## Phase 5 — agent orchestration
+
+- [`src/trading_firm/agents/schemas.py`](src/trading_firm/agents/schemas.py) — the §6.5 validation gate: agent JSON must parse through strict schemas before entering the runtime; tier adjustments are type-bounded ≤ 0 (M-1 as a type); §13 approval card with owner-facing renderer
+- [`.claude/commands/pre-session-briefing.md`](.claude/commands/pre-session-briefing.md) / [`post-session-review.md`](.claude/commands/post-session-review.md) — the §14/§15 workflows over the six agents
+- [`governance/model-routing-policy.md`](governance/model-routing-policy.md) — §7.4 routing; safety-critical duties never downgrade
+- **171 tests total**

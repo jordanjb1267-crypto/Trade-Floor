@@ -99,6 +99,19 @@ demo lifecycle script (scripts/broker_sandbox_lifecycle.py) awaits practice
 network access. An adversarial multi-agent review of the execution code was
 run; outcomes recorded in the PR.
 
+**2026-07-30 · Phase 5 delivered (owner instruction "continue").** Agent
+orchestration per §22 (the six agents themselves shipped in Phase 1): the
+§6.5 machine-validation gate — pydantic schemas for context reports,
+strategist assessments, CRO verdicts, §13 trade approval cards (all fields
+mandatory, markdown renderer for owner notification), and post-session
+reports with the §6.4 outcome taxonomy. The M-1 containment rule is now a
+type constraint: TierAdjustment.adjustment ≤ 0, so an agent payload that
+tries to RAISE a tier is unrepresentable and fails validation before any
+code sees it. Fail-closed plumbing: a stale/missing calendar or any
+freshness doubt makes news_state_known false. Briefing and post-session
+review workflows added as commands; §7.4 model-routing policy recorded in
+governance. 171 tests pass.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; re-enable the upgraded FMP connector (or select the historical tick
