@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
 
 from trading_firm.config import FirmConfig
-from trading_firm.features.engine import session_features
+from trading_firm.features.engine import prior_session_structure, session_features
 from trading_firm.market_data.bars import Bar, BarSeries
 from trading_firm.market_data.spreads import SpreadSeries
 from trading_firm.models import (
@@ -31,6 +31,7 @@ from trading_firm.risk.engine import RiskEngine
 from trading_firm.sessions.clock import SessionClock
 from trading_firm.sizing.engine import size_position
 from trading_firm.strategies.breakout import BreakoutParams, first_breakout_signal
+from trading_firm.strategies.continuation import ContinuationParams, first_continuation_signal
 from trading_firm.strategies.manifest import StrategyManifest
 from trading_firm.strategies.sweep_reversal import (
     SweepReversalParams,
@@ -159,6 +160,17 @@ def replay_session(
             features,
             active_bars,
             SweepReversalParams.from_manifest_params(manifest.params),
+            spec.pip_size,
+        )
+    elif manifest.strategy_id == "london_continuation":
+        structure = prior_session_structure(series, session_date, clock, spec.pip_size)
+        if structure is None:  # no prior-session data: fail closed (§0.10)
+            return SessionOutcome(session_date, SessionStatus.NO_FEATURES)
+        signal = first_continuation_signal(
+            features,
+            structure,
+            active_bars,
+            ContinuationParams.from_manifest_params(manifest.params),
             spec.pip_size,
         )
     else:

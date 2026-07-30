@@ -78,3 +78,55 @@ def session_features(
         pre_london_range_pips=pre_range,
         compression_ratio=compression.quantize(Decimal("0.01")),
     )
+
+
+STRUCTURE_FEATURES_VERSION = "structure_features_v1"
+MAX_PRIOR_LOOKBACK_DAYS = 5
+
+
+@dataclass(frozen=True)
+class PriorSessionStructure:
+    """Prior London trading-window structure serving a CURRENT session.
+
+    No-lookahead by construction: only bars from a prior day's
+    activation->flatten window contribute, all of which close before the
+    current session's activation boundary (recorded as computed_at)."""
+
+    feature_version: str
+    session_date: dt.date  # the current session these features serve
+    prior_session_date: dt.date  # the prior session actually used
+    computed_at: dt.datetime
+    prior_window_open: Decimal
+    prior_window_close: Decimal
+    net_move_pips: Decimal  # signed: positive = bullish prior session
+
+
+def prior_session_structure(
+    series: BarSeries,
+    session_date: dt.date,
+    clock: SessionClock,
+    pip_size: Decimal = Decimal("0.0001"),
+) -> PriorSessionStructure | None:
+    """London-window direction of the nearest prior day with data.
+
+    Walks back at most MAX_PRIOR_LOOKBACK_DAYS calendar days (weekends and
+    holidays have no bars and are skipped). Fail closed (§0.10): no prior
+    data -> None -> no candidates.
+    """
+    current_activation = clock.boundaries(session_date)["activation"]
+    for back in range(1, MAX_PRIOR_LOOKBACK_DAYS + 1):
+        prior_date = session_date - dt.timedelta(days=back)
+        prior = clock.boundaries(prior_date)
+        bars = series.between(prior["activation"], prior["flatten"])
+        if not bars:
+            continue
+        return PriorSessionStructure(
+            feature_version=STRUCTURE_FEATURES_VERSION,
+            session_date=session_date,
+            prior_session_date=prior_date,
+            computed_at=current_activation,
+            prior_window_open=bars[0].open,
+            prior_window_close=bars[-1].close,
+            net_move_pips=(bars[-1].close - bars[0].open) / pip_size,
+        )
+    return None

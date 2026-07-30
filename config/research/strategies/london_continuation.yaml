@@ -1,28 +1,43 @@
-# London Continuation — research manifest (§11). Rule logic not yet
-# implemented (declared for the research queue); no risk permissions.
+# London Continuation — research manifest (§11). Rule logic implemented
+# 2026-07-30 (strategies/continuation.py) as a ONE-VARIABLE experiment vs
+# the champion: identical london_breakout mechanics plus a single filter —
+# trade only in the prior session's validated London-window direction.
+# First-guess params declared below BEFORE any replay ran (§12.4).
+# Research only; no risk permissions.
 strategy_id: london_continuation
 version: 0.1.0
 status: research
 instruments: [GBP_USD, EUR_USD]
 session_definition: london_v1
-features: [session_features_v1]
+features: [session_features_v1, structure_features_v1]
 entry_rules:
-  - Pullback continuation in the direction of validated prior-session structure
+  - Champion breakout trigger (Asian range edge + buffer), taken ONLY in the
+    direction of the prior session's validated London-window structure
+  - First breakout decides; a counter-trend first breakout is no-trade
 invalidation_rules:
-  - Beyond the pullback extreme
+  - Opposite Asian range side, capped (as champion; explicit pullback-extreme
+    tracking deferred to future pre-registered research)
 exit_rules:
-  - Structure-based target or mandatory flatten boundary
+  - Fixed R-multiple target or mandatory flatten boundary (structure-based
+    targets deferred to future pre-registered research)
 expiration_rules:
   - Candidate expires at the entry cutoff (10:30 London)
 regime_filters:
-  - Higher-timeframe trend alignment (to be specified in research)
+  - Prior-session London net move >= 20 pips (validated structure)
+  - Asian range width 15-60 pips (as champion)
 news_filters:
   - No entry when the economic-calendar state is unknown (fail closed, §0.10)
 spread_limits:
   max_spread_pips: 2.5
 slippage_limits:
   max_slippage_pips: 1.0
-params: {}
+params:
+  min_prior_move_pips: 20
+  buffer_pips: 2
+  stop_max_pips: 40
+  target_r: 1.5
+  min_range_pips: 15
+  max_range_pips: 60
 risk_permissions:
   standard: false
   strong: false
