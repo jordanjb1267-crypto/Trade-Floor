@@ -18,7 +18,8 @@ from decimal import ROUND_FLOOR, Decimal
 
 from trading_firm.config import FirmConfig
 from trading_firm.features.engine import session_features
-from trading_firm.market_data.bars import BarSeries
+from trading_firm.market_data.bars import Bar, BarSeries
+from trading_firm.market_data.spreads import SpreadSeries
 from trading_firm.models import (
     AccountState,
     Candidate,
@@ -134,6 +135,7 @@ def replay_session(
     equity: Decimal = Decimal("250"),
     spread_pips: Decimal = Decimal("2.0"),
     exit_policy: ExitPolicy | None = None,
+    spreads: SpreadSeries | None = None,
 ) -> SessionOutcome:
     if manifest.strategy_id != "london_breakout":
         raise NotImplementedError(f"no replay rules implemented for {manifest.strategy_id}")
@@ -183,14 +185,24 @@ def replay_session(
     if not sizing.approved:
         return SessionOutcome(session_date, SessionStatus.REJECTED, reasons=sizing.reasons)
 
-    half_spread = spread_pips / 2 * spec.pip_size
+    # Costs: sizing always uses the flat ASSUMPTION (the live engine cannot
+    # know future spreads); execution charges the MEASURED per-bar spread
+    # when a SpreadSeries is supplied — so replay surfaces exactly how far
+    # realized losses drift from approved risk when spreads move.
+    def half_spread(bar: Bar) -> Decimal:
+        if spreads is None:
+            return spread_pips / 2 * spec.pip_size
+        return spreads.at(bar.ts) / 2
+
     is_long = signal.direction is Direction.LONG
     entry_exec = (
-        signal.trigger_price + half_spread if is_long else signal.trigger_price - half_spread
+        signal.trigger_price + half_spread(trigger_bar)
+        if is_long
+        else signal.trigger_price - half_spread(trigger_bar)
     )
 
-    def exit_exec(mid: Decimal) -> Decimal:
-        return mid - half_spread if is_long else mid + half_spread
+    def exit_exec(bar: Bar, mid: Decimal) -> Decimal:
+        return mid - half_spread(bar) if is_long else mid + half_spread(bar)
 
     # Conservative simulation: same-bar stop priority, then remaining bars
     # until the flatten boundary — which is inviolate (§14, F-5).
@@ -227,11 +239,15 @@ def replay_session(
         stop_hit = bar.low <= current_stop if is_long else bar.high >= current_stop
         target_hit = bar.high >= target_price if is_long else bar.low <= target_price
         if stop_hit:  # worst case first
-            exit_price, exit_ts, outcome = exit_exec(current_stop), bar.ts, TradeOutcome.STOP
+            exit_price, exit_ts, outcome = (
+                exit_exec(bar, current_stop),
+                bar.ts,
+                TradeOutcome.STOP,
+            )
             break
         if target_hit:
             exit_price, exit_ts, outcome = (
-                exit_exec(target_price),
+                exit_exec(bar, target_price),
                 bar.ts,
                 TradeOutcome.TARGET,
             )
@@ -248,7 +264,7 @@ def replay_session(
     if outcome is None:
         last_bar = manage_bars[-1]
         exit_price, exit_ts, outcome = (
-            exit_exec(last_bar.close),
+            exit_exec(last_bar, last_bar.close),
             boundaries["flatten"],
             TradeOutcome.FLATTENED,
         )
@@ -279,6 +295,7 @@ def replay_range(
     equity: Decimal = Decimal("250"),
     spread_pips: Decimal = Decimal("2.0"),
     exit_policy: ExitPolicy | None = None,
+    spreads: SpreadSeries | None = None,
 ) -> ReplayReport:
     outcomes = [
         replay_session(
@@ -292,6 +309,7 @@ def replay_range(
             equity=equity,
             spread_pips=spread_pips,
             exit_policy=exit_policy,
+            spreads=spreads,
         )
         for day in session_dates
     ]

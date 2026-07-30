@@ -246,6 +246,19 @@ bid/ask instead of the flat assumption) registered as framework work.
 run_replay.py now reads both fixture formats. PR #2 closed as superseded.
 Report: `reports/validation/2026-07-30-oanda-fixtures-spreads-feed-robustness.md`.
 
+**2026-07-30 · Spread-aware replay delivered (framework work, no §12.4
+spend).** Replay execution now charges measured per-bar spreads from MAB
+fixtures (`SpreadSeries`, fail-closed on gaps) while sizing keeps the flat
+assumption — mirroring what live would experience and surfacing realized-
+vs-approved risk drift, which is now unit-tested in both directions
+(±1 pip measured drift moves a $2.50 approved-risk stop to −$2.56/−$2.44).
+On the July broker-feed fixtures, measured costs recover $0.21 (GBP) and
+$0.33 (EUR) vs the flat assumption with zero trade-outcome changes: the
+flat-spread results were cost-biased, not path-biased. The 2.0-pip sizing
+assumption is retained deliberately — erring conservative on size is
+correct (§3). Suite: 211. Report addendum:
+`reports/validation/2026-07-30-oanda-fixtures-spreads-feed-robustness.md`.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access

@@ -69,6 +69,30 @@ Interpretation:
   one layer of unrepresentativeness. FMP remains the deep-history and
   cross-validation source.
 
+## Addendum (same day): spread-aware replay implemented
+
+Replay now accepts a `SpreadSeries` (measured per-bar close spreads from a
+MAB fixture) and charges each fill the measured half-spread of its bar,
+while **sizing keeps the flat assumption** — exactly what the live engine
+would experience. Fails closed on any bar without a measured spread. Unit
+invariants: measured==assumed reproduces the flat result to the cent; a
+1-pip-wider measured spread turns the $2.50 approved-risk stop into a
+−$2.56 realized loss, 1 pip tighter into −$2.44 (`tests/unit/
+test_replay_spreads.py`). `run_replay.py` uses measured costs
+automatically for OANDA fixtures.
+
+July sessions, flat 2.0-pip assumption vs measured per-bar costs:
+
+| | net (flat) | net (measured) | Δ | W/L/F |
+|---|---|---|---|---|
+| GBP_USD | −$7.55 | −$7.34 | +$0.21 | 5/9/9 (unchanged) |
+| EUR_USD | −$2.26 | −$1.93 | +$0.33 | 4/3/6 (unchanged) |
+
+The assumption is mildly conservative in-session (≈1.5¢/trade GBP,
+≈4.7¢/trade EUR), and no trade outcome changes — the flat-spread results
+were cost-biased, not path-biased. The 2.0-pip sizing assumption stays:
+conservative sizing is the correct side to err on (§3).
+
 ## Consequences
 
 - Champion v0.1.0's July numbers are weak on either feed; nothing here

@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from trading_firm.config import BASE_CONFIG_PATH, load_config  # noqa: E402
-from trading_firm.market_data import from_fmp_rows, from_oanda_candles  # noqa: E402
+from trading_firm.market_data import SpreadSeries, from_fmp_rows, from_oanda_candles  # noqa: E402
 from trading_firm.models import InstrumentSpec  # noqa: E402
 from trading_firm.research import replay_range  # noqa: E402
 from trading_firm.research.replay import SessionStatus  # noqa: E402
@@ -47,13 +47,16 @@ def main() -> int:
     fixture, instrument, margin_rate = sys.argv[1], sys.argv[2], Decimal(sys.argv[3])
 
     payload = json.loads(Path(fixture).read_text())
+    spreads = None
     if isinstance(payload, dict) and "candles" in payload:
         # OANDA practice fixture (scripts/fetch_oanda_candles.py): aware-UTC
-        # timestamps, no pinning question. Replay still uses mid + the
-        # configured spread assumption until spread-aware replay exists.
+        # timestamps, no pinning question. Execution costs use MEASURED
+        # per-bar spreads; sizing keeps the flat assumption (as live would).
         series = from_oanda_candles(
             payload["candles"], instrument=instrument, granularity_minutes=5
         )
+        spreads = SpreadSeries.from_oanda_candles(payload["candles"], instrument=instrument)
+        print("costs: measured per-bar spreads (sizing still uses the flat assumption)")
         session_dates = sorted({b.ts.astimezone(LONDON).date() for b in series.bars})
     else:
         series = from_fmp_rows(
@@ -90,6 +93,7 @@ def main() -> int:
         engine=engine,
         manifest=manifest,
         spec=spec,
+        spreads=spreads,
     )
 
     print(f"\n{'DATE':<12}{'STATUS':<12}{'OUTCOME':<10}{'UNITS':>7}{'PNL':>9}")
