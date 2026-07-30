@@ -16,13 +16,26 @@ Usage:
         python3 scripts/broker_sandbox_lifecycle.py --confirm-demo-order
 """
 
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from trading_firm.execution.adapter import BrokerAuthError  # noqa: E402
+from trading_firm.execution.credentials import CredentialError  # noqa: E402
 from trading_firm.execution.oanda_transport import OandaPracticeTransport  # noqa: E402
+
+_ACCOUNT_ID = re.compile(r"\b(\d{3})-(\d{3})-\d+-(\d{3})\b")
+
+
+def redact(text: str) -> str:
+    """Scrub account ids from anything printed (§17), matching the redaction
+    verify_oanda_demo.py already applies. Broker responses echo accountID in
+    every transaction envelope, so raw detail strings would otherwise put it
+    straight into an audit record."""
+    return _ACCOUNT_ID.sub(r"\1-\2-…-\3", text)
 
 
 def main() -> int:
@@ -31,7 +44,13 @@ def main() -> int:
         return 2
 
     checks: list[tuple[str, bool, str]] = []
-    transport = OandaPracticeTransport()
+    # A credential problem is a refusal, not a crash: it is reported in the
+    # same shape as the other guards, and no order was placed either way.
+    try:
+        transport = OandaPracticeTransport()
+    except (CredentialError, BrokerAuthError) as err:
+        print(f"Refusing to run: {err}")
+        return 2
 
     summary = transport.account_summary().get("account", {})
     checks.append(("account reachable", bool(summary), f"balance={summary.get('balance')}"))
@@ -54,7 +73,7 @@ def main() -> int:
         client_order_id="clltf-lifecycle-test",
     )
     fill = response.get("orderFillTransaction")
-    checks.append(("1-unit market order filled", fill is not None, str(response)[:160]))
+    checks.append(("1-unit market order filled", fill is not None, redact(str(response))[:160]))
     if fill is None:
         _report(checks)
         return 1
@@ -66,13 +85,13 @@ def main() -> int:
         (
             "broker-held stop confirmed active (§0.9)",
             stop is not None and stop.get("state") in ("PENDING", "TRIGGERED"),
-            f"stop={stop}",
+            redact(f"stop={stop}"),
         )
     )
 
     close = transport.close_trade(trade_id)
     closed = "orderFillTransaction" in close
-    checks.append(("trade closed", closed, str(close)[:120]))
+    checks.append(("trade closed", closed, redact(str(close))[:120]))
 
     flat = transport.open_trade_ids() == set()
     checks.append(("account flat after lifecycle", flat, ""))

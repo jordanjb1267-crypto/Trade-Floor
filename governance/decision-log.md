@@ -430,11 +430,91 @@ across CLAUDE.md, README, constitution, config and source headers. Prior
 versions are retained unedited — v1.1.4 is a new file, not an edit of v1.1.3
 (§0.11).
 
-**Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
-passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
-once OANDA network access exists — prerequisites confirmed 2026-07-30: a
-fresh VM (or local run) so the updated network policy applies, plus a
-rotated practice token in an untracked `.env` (`OANDA_DEMO_API_TOKEN`, the
-name the scripts read; see `.env.example`); extend the OANDA broker-feed
-fixtures backward (Apr–Jun) before any new strategy research spends a
-§12.4 test.
+**2026-07-30 · Phase 4 lifecycle attempt 2 — failed closed on a placeholder
+credential; a 401-misdiagnosis defect found and fixed.** The owner reported
+"Oanda token added to environment". Both `OANDA_DEMO_API_TOKEN` and
+`OANDA_DEMO_ACCOUNT_ID` were indeed present — holding the literal placeholder
+notation from the usage docstring (`<practice token>`-shaped, 16 chars; `<id>`,
+4 chars), inspected by length and pattern only and never printed. So the
+to-do's second prerequisite is still open and no token has been rotated. Its
+first prerequisite is now **met**: the practice host answered an unauthenticated
+probe with a genuine OANDA 401 (`Server: cloudflare`, OANDA's error schema, no
+proxy `Via`), so egress works and attempt 1's "no network" condition is gone.
+The attempt itself is the value: run pre-fix, it failed with **"no practice
+accounts on this token"** — a rejected credential reported as a missing
+account, which would send an operator to create a practice account they already
+have. Root cause: `_request` preserved every HTTP error body as an ordinary
+response, right for order rejections carrying `orderRejectTransaction`
+(finding 5) but wrong for auth failures, so a 401 became a valid-looking empty
+account list. Fixed on three fronts: (1) 401/403 now raise `BrokerAuthError`,
+which subclasses `TransportFailureError` so every existing handler keeps its
+fail-closed UNKNOWN routing — safe here because a rejected credential also
+fails the confirmed-absent lookups `resubmit_safe` demands, so the path cannot
+resubmit; (2) new `execution/credentials.py` refuses placeholders, empty and
+whitespace-bearing values before any network I/O, and rules out only what is
+locally impossible — judging a well-formed token stays the broker's job;
+(3) the transport now honors the documented `OANDA_DEMO_ACCOUNT_ID` pin, which
+it had silently ignored while always taking `accounts[0]` — a wrong-account
+risk on any token holding several practice accounts. `oanda_transport.py` had
+**zero** test coverage; it now has 20 tests, and all three invariants were
+mutation-tested (neutering each fix fails the suite). No credential value
+appears in code, tests, logs, or evidence (§0 iron rule 5). Suite: 255 → 275.
+Phase 4's lifecycle run remains outstanding. Evidence appended as attempt 2 to
+`docs/audits/2026-07-30-practice-order-lifecycle.md`; attempt 1 unedited
+(§0.11).
+
+**2026-07-30 · Phase 4 demo order-lifecycle test PASSED — the §22 Phase 4
+deliverable is complete.** With a real token supplied, `verify_oanda_demo.py`
+returned **11/11** and `broker_sandbox_lifecycle.py --confirm-demo-order`
+returned **6/6** on practice account `101-001-…-001` at 17:59:07Z: a 1-unit
+EUR_USD order filled (open 1.15291), the broker-held stop was confirmed active
+server-side (`STOP_LOSS` id 6 at 1.14768, GTC, state PENDING) rather than held
+locally (§0.9), the trade closed (1.15276, realized −0.0002 USD — the spread),
+and three independent counters confirmed the account flat
+(`openTradeCount`/`openPositionCount`/`pendingOrderCount` all 0). Opened and
+closed within ~3s, far from the 21:00 UTC rollover (§14, F-5). **Audit F-1
+re-confirmed live:** GBP_USD's per-instrument margin rate is 5% against the
+account's 2%, so sizing on the account rate would oversize GBP_USD by 2.5×
+(§3.2). This validates order *mechanics* only — nothing about fill quality,
+edge, or §13 promotion readiness; no trade went through the §2 candidate path
+and `live_allowed` stays empty everywhere.
+
+Two things worth recording. (1) **Credential handling.**
+`OANDA_DEMO_API_TOKEN` arrived holding a valid 65-char token, a space, and the
+fragment `OANDA_DEMO_ACCOUNT_ID=<id>` — two settings collapsed into one value.
+The preflight added earlier the same day caught it ("contains whitespace…
+Nothing was sent") instead of sending a mangled header. The run used the token
+extracted in-process for that command only; it was never written to disk, put
+on a command line, or committed, and the variable itself still needs fixing.
+No trimming heuristic was added to the scripts — silently repairing a
+credential would mask exactly this paste error. Whether the supplied token is
+the rotated one or the chat-exposed one cannot be determined from this side,
+so the rotation to-do stays open. (2) **§17 gap closed.** The lifecycle
+script printed raw broker responses, and every OANDA transaction envelope
+echoes `accountID`, so an unredacted account id reached stdout and would have
+entered the audit record verbatim; `verify_oanda_demo.py` has redacted since
+Phase 0. The script now applies the same redaction, pinned by two tests
+(scrubbed id; prices and trade ids preserved, since redaction that ate them
+would make evidence unverifiable). Suite: 275 → 277. Evidence appended as
+attempt 3 to `docs/audits/2026-07-30-practice-order-lifecycle.md`; attempts 1
+and 2 unedited (§0.11).
+
+**2026-07-30 · OANDA practice token rotation confirmed by the owner.** The
+lifecycle evidence recorded that the supplied token could not be told apart
+from the chat-exposed setup token from this side; the owner confirmed the same
+day that it **is** the rotated one. So the credential that ran the Phase 4
+lifecycle test is a rotated one, and the token that passed through chat during
+setup is no longer in use. This closes the OANDA half of the rotation to-do;
+the **FMP** token rotation is untouched by this confirmation and stays open.
+Recorded as an addendum to attempt 3 rather than an edit to it — the original
+statement was accurate when written (§0.11).
+
+**Standing owner to-dos:** rotate the **FMP** token that passed through chat
+during setup (the OANDA practice token was rotated — confirmed 2026-07-30);
+repair `OANDA_DEMO_API_TOKEN`, which currently holds the token with
+`OANDA_DEMO_ACCOUNT_ID=<id>` concatenated onto it (set it to the bare token;
+leave `OANDA_DEMO_ACCOUNT_ID` unset to use the first account on the token, or
+pin a real account id) so the lifecycle script runs unassisted; extend the
+OANDA broker-feed fixtures backward (Apr–Jun) before any new strategy research
+spends a §12.4 test. **Cleared 2026-07-30:** OANDA network access, the Phase 4
+demo lifecycle run, and OANDA practice token rotation.
