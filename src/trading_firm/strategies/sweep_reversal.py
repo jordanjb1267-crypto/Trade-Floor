@@ -101,17 +101,22 @@ def first_sweep_reversal_signal(
                 if index - low_side.start_index >= params.reentry_within_bars:
                     low_side.dead = True
 
+        # "Back inside the range" means inside on BOTH sides: a re-entry close
+        # that has already blown through the opposite extreme would put the
+        # opposing-liquidity target BEHIND the entry (negative reward), which
+        # replay would then score as a TARGET win. Require strictly inside.
+        closed_inside = features.asian_low < bar.close < features.asian_high
         short_ready = (
             not high_side.dead
             and high_side.start_index is not None
             and index - high_side.start_index < params.reentry_within_bars
-            and bar.close < features.asian_high
+            and closed_inside
         )
         long_ready = (
             not low_side.dead
             and low_side.start_index is not None
             and index - low_side.start_index < params.reentry_within_bars
-            and bar.close > features.asian_low
+            and closed_inside
         )
         if short_ready and long_ready:
             return None  # both sides resolved on one bar: ambiguous (§0.6)

@@ -180,3 +180,40 @@ class TestReplayIntegration:
         # flatten at 1.3336 close: exit 1.3337 short side -> 994 x -0.0002
         assert trade.exit_price == Decimal("1.3337")
         assert trade.pnl_usd == Decimal("-0.20")
+
+
+class TestRewardInvariant:
+    """Regression: a re-entry close outside the OPPOSITE extreme put the
+    opposing-liquidity target behind the entry (negative reward), and replay
+    scored the resulting loss as a TARGET win (adversarial review 2026-07-30).
+    """
+
+    def test_close_beyond_the_far_extreme_is_no_setup(self, env: dict) -> None:
+        # Sweeps the high (1.3348), then a violent bar closes at 1.3295 —
+        # BELOW the 1.3300 range low. A short entered at 1.3295 targeting
+        # 1.3300 would be targeting a WORSE price than entry.
+        violent = bar("08:30", "1.3346", "1.3350", "1.3290", "1.3295")
+        assert signal_for(env, [*ASIAN, SWEEP, violent]) is None
+
+    def test_long_side_sweep_produces_positive_reward(self, env: dict) -> None:
+        # Mirror path (previously untested end to end): sweep BELOW the low
+        # (1.3294 < 1.3297 threshold), close back inside -> LONG toward the
+        # 1.3340 opposing extreme, which must be above the entry.
+        low_sweep = bar("08:15", "1.3310", "1.3315", "1.3294", "1.3296")
+        reentry = bar("08:30", "1.3296", "1.3312", "1.3292", "1.3310")
+        signal = signal_for(env, [*ASIAN, low_sweep, reentry])
+        assert signal is not None
+        assert signal.direction is Direction.LONG
+        assert signal.trigger_price == Decimal("1.3310")  # re-entry close
+        assert signal.stop_price == Decimal("1.3290")  # extreme 1.3292 - 2p buffer
+        assert signal.target_price == Decimal("1.3340")  # opposing liquidity
+        assert signal.target_price > signal.trigger_price > signal.stop_price
+
+    def test_long_side_replay_stop_respects_approved_risk(self, env: dict) -> None:
+        low_sweep = bar("08:15", "1.3310", "1.3315", "1.3294", "1.3296")
+        reentry = bar("08:30", "1.3296", "1.3312", "1.3292", "1.3310")
+        stop_out = bar("08:45", "1.3310", "1.3312", "1.3288", "1.3289")
+        trade = replay(env, [*ASIAN, low_sweep, reentry, stop_out]).trade
+        assert trade.direction is Direction.LONG
+        assert trade.outcome is TradeOutcome.STOP
+        assert -trade.pnl_usd <= trade.allowed_risk_usd

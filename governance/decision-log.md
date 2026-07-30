@@ -337,6 +337,45 @@ policy allowing the practice host). ROOT CAUSE for the owner: the
 environment's variables do not include `OANDA_DEMO_API_TOKEN` — adding it
 (rotated value) makes the run a one-command re-fire.
 
+**2026-07-30 · Adversarial review of the RESEARCH layer; critical fill
+defect found and corrected; published tables superseded.** The research code
+written headless this session was merged without peer review — so it got the
+same treatment the execution layer got. A 13-agent workflow (5 independent
+lenses, refutation-default verifiers) raised 21 candidate defects; 6 survived
+adversarial verification, 2 were refuted, 13 lower-severity ones are recorded
+unverified in the review output. CRITICAL, found independently by three
+lenses: replay filled stop-order entries at the strategy's trigger price even
+when the first ACTIVE bar had already OPENED beyond it. Because the Asian
+range freezes at 07:30 while entries open at 08:00, every break inside that
+blackout booked an unobtainable price — in 5 of 14 affected trades, a price
+outside the trigger bar's entire range. Worse than the fictitious profit: the
+candidate reached the risk engine carrying the TRIGGER as its entry, so
+sizing measured a stop distance the trade never had and a stopped trade could
+exceed approved risk — the one guarantee this framework exists to provide.
+Also confirmed and fixed: session_features accepted a partially-covered Asian
+window (phantom first-session trades, now fails closed §0.10); sweep_reversal
+could emit a signal whose target sat BEHIND the entry, scored by replay as a
+TARGET win. Fix: entry clamps to the adverse side of the trigger bar's open
+(the gap fill a broker would give) and the candidate is built from that
+achievable price, so the risk engine sizes reality; R-targets and the
+breakeven trail anchor on the real entry. Regression tests pin both
+directions and assert the risk-cap property across gap sizes — the mutation
+audit had found the SHORT paths entirely untested. CORRECTED RESULTS: every
+published figure moved, two changed SIGN (london_breakout EUR +$0.67 →
+−$0.24; london_continuation EUR +$0.30 → −$0.70); london_breakout GBP −$9.02
+→ −$11.53; continuation GBP +$1.94 → +$1.44; sweep GBP +$1.48 → +$2.05. The
+exit-challenger REJECTED verdict survives and strengthens (no variant now
+eligible at all). No strategy status changes — nothing was promoted on the
+bad numbers — and no §12.4 test is refunded or newly spent: correcting an
+already-recorded look is not a new look. Superseded reports carry pointer
+banners and are preserved unedited (§0.11). Suite: 228 → 236. LESSON: the
+execution layer's review yielded 21 defects and this one yielded a critical
+that made losing strategies look profitable. Silent backtest optimism is more
+dangerous than a crash — it is persuasive and it survives a green suite.
+Adversarial review is now mandatory for RESEARCH code before any number it
+produces is published, not only for order-path code. Correction:
+`reports/validation/2026-07-30-CORRECTION-achievable-fills.md`.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a

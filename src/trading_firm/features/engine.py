@@ -54,6 +54,12 @@ def session_features(
     asian_bars = series.between(window_start, boundary)
     if not asian_bars:
         return None
+    # Coverage guard (§0.10): a partially-covered Asian window yields a
+    # truncated range — too narrow, so the breakout triggers early and the
+    # stop sits in the wrong place. A fixture that simply starts mid-window
+    # must fail closed like missing data, not silently emit phantom trades.
+    if asian_bars[0].ts > window_start + dt.timedelta(minutes=series.granularity_minutes):
+        return None
 
     asian_high = max(bar.high for bar in asian_bars)
     asian_low = min(bar.low for bar in asian_bars)

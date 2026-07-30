@@ -1,5 +1,13 @@
 # OANDA practice fixtures: spread measurement & feed-robustness (2026-07-30)
 
+> **⚠ SUPERSEDED IN PART (2026-07-30).** The result tables below were
+> computed with a replay engine that filled gapped entries at an unobtainable
+> price and sized them against a stop distance the trade never had. Corrected
+> figures — including two sign flips — are in
+> `2026-07-30-CORRECTION-achievable-fills.md`. This report is preserved
+> unedited below that line per §0.11; do not cite its numbers.
+
+
 **Status: framework replay output — NOT validation** (§12.4, §12.6).
 
 ## Data

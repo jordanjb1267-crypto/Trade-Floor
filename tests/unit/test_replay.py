@@ -79,8 +79,11 @@ def build_series() -> BarSeries:
     # QUIET: active bars never reach either trigger.
     bars += asian_bars(QUIET_DAY)
     bars += [bar(QUIET_DAY, "08:15", "1.3320", "1.3330", "1.3315", "1.3325")]
-    # NARROW: 10-pip Asian range fails the regime filter.
+    # NARROW: 10-pip Asian range fails the regime filter. Starts at 00:00 so
+    # the session passes the Asian-window COVERAGE guard and genuinely
+    # exercises the width filter rather than failing closed on missing data.
     bars += [
+        bar(NARROW_DAY, "00:00", "1.3304", "1.3309", "1.3300", "1.3305"),
         bar(NARROW_DAY, "02:00", "1.3305", "1.3310", "1.3300", "1.3306"),
         bar(NARROW_DAY, "08:15", "1.3306", "1.3400", "1.3300", "1.3395"),
     ]
