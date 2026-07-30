@@ -1,0 +1,32 @@
+# Asian Range Sweep and Reversal — research manifest (§11). Rule logic not yet
+# implemented (declared for the research queue); no risk permissions.
+strategy_id: asian_range_sweep_reversal
+version: 0.1.0
+status: research
+instruments: [GBP_USD, EUR_USD]
+session_definition: london_v1
+features: [session_features_v1]
+entry_rules:
+  - Sweep beyond an Asian range extreme that fails acceptance and displaces back inside
+invalidation_rules:
+  - Beyond the sweep extreme
+exit_rules:
+  - Opposing range liquidity target or mandatory flatten boundary
+expiration_rules:
+  - Candidate expires at the entry cutoff (10:30 London)
+regime_filters:
+  - Sweep depth and re-entry speed thresholds (to be specified in research)
+news_filters:
+  - No entry when the economic-calendar state is unknown (fail closed, §0.10)
+spread_limits:
+  max_spread_pips: 2.5
+slippage_limits:
+  max_slippage_pips: 1.0
+params: {}
+risk_permissions:
+  standard: false
+  strong: false
+  high: false
+  exceptional: false
+validation_record_id: null
+promotion_record_id: null

@@ -1,0 +1,39 @@
+# Secrets — never commit credentials (Master Handoff §0.2, §17)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# Runtime state, data, and backups (spec §9: only encrypted, approved data may be committed)
+state/**
+!state/**/
+!state/**/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/normalized/*
+!data/normalized/.gitkeep
+database/backups/*
+!database/backups/.gitkeep
+*.sqlite
+*.sqlite3
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Build artifacts
+dist/
+*.mcpb
+*.egg-info/

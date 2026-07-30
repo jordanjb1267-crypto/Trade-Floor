@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.2",
+  "name": "oanda-practice-readonly",
+  "display_name": "OANDA Practice (Read-Only)",
+  "version": "0.1.1",
+  "description": "Read-only OANDA fxTrade Practice tools: account summary, instrument specs, live pricing with spreads, candles, positions, orders, transactions, and the Master Handoff §16 connection audit. No order placement — by design.",
+  "long_description": "Read-only MCP server for the OANDA v20 PRACTICE API, built for the Claude London Trading Firm project.\n\nHard constraints from the project constitution (Master Handoff v1.1.0):\n- No order-placement, modification, or cancellation tools exist in this server (§2: no LLM-facing order path — execution belongs to the deterministic broker adapter).\n- The practice host is hard-coded; this server cannot reach the live host (§13 staging).\n- The API token is provided via keychain-backed user configuration and is never logged (§17).\n\nTools: list accounts, account summary, instrument specs (min size / precision / margin rate), live pricing with spread in pips, historical candles, open positions, pending orders, recent transactions, and a one-call §16 connection audit.",
+  "author": {
+    "name": "Jordan"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "OANDA_PRACTICE_API_TOKEN": "${user_config.api_token}"
+      }
+    }
+  },
+  "user_config": {
+    "api_token": {
+      "type": "string",
+      "title": "OANDA Practice API token",
+      "description": "Personal access token from your fxTrade PRACTICE account (Manage API Access). Do NOT use a live-account token — this server only talks to the practice host and a live token will be rejected with 401. Stored in the OS keychain.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "keywords": ["oanda", "forex", "trading", "practice", "read-only"],
+  "license": "MIT"
+}

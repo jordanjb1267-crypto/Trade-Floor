@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(config/live/**)",
+      "Write(config/live/**)",
+      "Edit(governance/approvals/**)",
+      "Write(governance/approvals/**)",
+      "Edit(.claude/hooks/**)",
+      "Write(.claude/hooks/**)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.json)",
+      "Read(.env)",
+      "Read(.env.*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect_production.py"
+          }
+        ]
+      }
+    ]
+  }
+}

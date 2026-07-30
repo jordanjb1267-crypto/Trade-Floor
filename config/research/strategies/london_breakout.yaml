@@ -1,0 +1,38 @@
+# London Breakout — research manifest (§11). Unvalidated; no risk permissions.
+strategy_id: london_breakout
+version: 0.1.0
+status: research
+instruments: [GBP_USD, EUR_USD]
+session_definition: london_v1
+features: [session_features_v1]
+entry_rules:
+  - First print beyond the Asian range high/low plus buffer_pips during the ACTIVE window
+  - One signal per session; a bar breaching both sides is ambiguous and produces no trade
+invalidation_rules:
+  - Technical stop at the opposite Asian range side, capped at stop_max_pips
+exit_rules:
+  - Fixed target at target_r times the stop distance
+  - Mandatory flatten at the 11:00 London boundary (inviolate, F-5)
+expiration_rules:
+  - Candidate expires at the entry cutoff (10:30 London)
+regime_filters:
+  - Asian range width within [min_range_pips, max_range_pips]
+news_filters:
+  - No entry when the economic-calendar state is unknown (fail closed, §0.10)
+spread_limits:
+  max_spread_pips: 2.5
+slippage_limits:
+  max_slippage_pips: 1.0
+params:
+  buffer_pips: 2
+  stop_max_pips: 40
+  target_r: "1.5"
+  min_range_pips: 15
+  max_range_pips: 60
+risk_permissions:
+  standard: false
+  strong: false
+  high: false
+  exceptional: false
+validation_record_id: null
+promotion_record_id: null
