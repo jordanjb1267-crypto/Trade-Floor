@@ -499,13 +499,22 @@ would make evidence unverifiable). Suite: 275 → 277. Evidence appended as
 attempt 3 to `docs/audits/2026-07-30-practice-order-lifecycle.md`; attempts 1
 and 2 unedited (§0.11).
 
-**Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
-passed through chat during setup, and **confirm whether the token supplied on
-2026-07-30 was the rotated one** — it cannot be told apart from this side;
+**2026-07-30 · OANDA practice token rotation confirmed by the owner.** The
+lifecycle evidence recorded that the supplied token could not be told apart
+from the chat-exposed setup token from this side; the owner confirmed the same
+day that it **is** the rotated one. So the credential that ran the Phase 4
+lifecycle test is a rotated one, and the token that passed through chat during
+setup is no longer in use. This closes the OANDA half of the rotation to-do;
+the **FMP** token rotation is untouched by this confirmation and stays open.
+Recorded as an addendum to attempt 3 rather than an edit to it — the original
+statement was accurate when written (§0.11).
+
+**Standing owner to-dos:** rotate the **FMP** token that passed through chat
+during setup (the OANDA practice token was rotated — confirmed 2026-07-30);
 repair `OANDA_DEMO_API_TOKEN`, which currently holds the token with
 `OANDA_DEMO_ACCOUNT_ID=<id>` concatenated onto it (set it to the bare token;
 leave `OANDA_DEMO_ACCOUNT_ID` unset to use the first account on the token, or
 pin a real account id) so the lifecycle script runs unassisted; extend the
 OANDA broker-feed fixtures backward (Apr–Jun) before any new strategy research
-spends a §12.4 test. **Cleared 2026-07-30:** OANDA network access and the
-Phase 4 demo lifecycle run.
+spends a §12.4 test. **Cleared 2026-07-30:** OANDA network access, the Phase 4
+demo lifecycle run, and OANDA practice token rotation.

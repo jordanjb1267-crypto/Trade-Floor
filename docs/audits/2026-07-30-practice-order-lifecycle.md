@@ -206,6 +206,13 @@ Whether the inserted token is the **rotated** one or the chat-exposed token
 from setup cannot be determined from this side; the rotation to-do stays open
 until the owner confirms it.
 
+> **Addendum, 2026-07-30 (same day):** the owner confirmed the supplied token
+> **is** the rotated one. The paragraph above is retained as written because it
+> was true from this side at the time of the run (§0.11); this line records the
+> answer rather than rewriting the question. The OANDA half of the rotation
+> to-do is therefore closed — the chat-exposed practice token from setup is no
+> longer the credential in use. The **FMP** token rotation remains open.
+
 ## Connection audit (`verify_oanda_demo.py`) — 11/11
 
 ```
