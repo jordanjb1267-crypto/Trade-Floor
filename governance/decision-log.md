@@ -430,6 +430,53 @@ across CLAUDE.md, README, constitution, config and source headers. Prior
 versions are retained unedited — v1.1.4 is a new file, not an edit of v1.1.3
 (§0.11).
 
+**2026-07-30 · The `.env` mismatch found and closed; root cause of every
+failed-closed run today.** `.env.example` instructs the owner to copy
+secrets into `.env`, but nothing in the repo ever read that file — all
+three credential-reading entry points call `os.environ.get` directly and
+there is no dotenv dependency. A correctly filled-in `.env` therefore did
+nothing, and the scripts failed closed with "token not set" while the
+token sat on disk. Fixed with a dependency-free loader
+(`src/trading_firm/env_file.py`) wired into `fetch_oanda_candles.py`,
+`verify_oanda_demo.py`, and `broker_sandbox_lifecycle.py`. Design follows
+§17 and §0 iron rule 5: the real environment always wins over the file
+(exported/session values take precedence over a stale file), values are
+never logged, parse errors cite a line number and never echo line content,
+and an absent file is not an error — callers still fail closed. Seven unit
+tests build credential-shaped values at runtime so the secret-scan hook
+stays green. Suite 255 → 262. `.env` remains gitignored and unblessed:
+§17 still prefers the OS keychain.
+
+**2026-07-30 · Broker-feed fixtures now symmetric: EUR_USD extended to
+2026-03-30.** EUR_USD refetched over the full span via the governed
+read-only script; verified a strict superset of the 2026-06-08 file (every
+candle present, values identical) before that file was removed. Both
+instruments now cover 2026-03-30 → 2026-07-29 — GBP_USD 25,337 candles /
+6 quality events, EUR_USD 25,343 / 1, all of them the usual Sunday ~21:00
+UTC weekend-open gaps. Cross-pair research no longer has to restrict to
+EUR's shorter window. The fixture-extension standing item is now fully
+closed for both pairs. Spread-report postscript and coverage note updated;
+no measurement is re-stated.
+
+**2026-07-30 · Phase 4 practice order-lifecycle run PASSED 6/6 — the
+standing to-do is satisfied.** With the rotated token reaching the session
+environment, `scripts/broker_sandbox_lifecycle.py --confirm-demo-order`
+ran once at 18:26:43Z after a green pre-run gate (262 tests, ruff clean):
+account reachable, pricing fetched, 1-unit EUR_USD market order filled,
+broker-held stop confirmed active and price-exact (STOP_LOSS @ 1.14760 =
+bid 1.15260 − 50 pips, GTC, PENDING, bound to the opened trade), trade
+closed, account flat. Evidence with account ids redacted:
+`docs/audits/2026-07-30-practice-order-lifecycle.md` (Attempt 2; the
+failed-closed Attempt 1 is preserved unedited per §0.11). Significance:
+§0.9 stop attachment is now confirmed against the real venue rather than
+the fake broker — precisely the integration truth the 21-finding
+adversarial review warned unit tests against a friendly fake could not
+supply. Scope is transport and order mechanics only: not a strategy trade,
+no §12.4 test spent, nothing claimed about fill quality or slippage (F-5),
+and the F-2 live re-audit remains a Phase 7 gate. Token hygiene: the
+credential was verified by hash to differ from the one that passed through
+chat; that earlier token stays on the rotation list below.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a

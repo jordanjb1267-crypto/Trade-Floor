@@ -62,3 +62,72 @@ exported as `OANDA_DEMO_API_TOKEN` in the session environment, plus a VM
 whose egress policy allows the OANDA practice host. With those in place,
 re-run the exact command above from a clean checkout of `main` and append
 the evidence to this record — do not edit this attempt (§0.11).
+
+---
+
+# Attempt 2 — 2026-07-30T18:26:43Z — **PASS (6/6)**
+
+The first attempt above is preserved unedited (§0.11). This section records
+the completed run.
+
+| | |
+|---|---|
+| **Environment** | Claude Code remote VM, branch `claude/env-loading-and-eur-extension` (from `origin/main` @ `de0f7c2`) |
+| **Method** | `scripts/broker_sandbox_lifecycle.py --confirm-demo-order`, unmodified apart from the `.env` load added this session; the sole sanctioned order path (§0 iron rule 1) |
+| **Credential** | Rotated practice token supplied via the session environment as `OANDA_DEMO_API_TOKEN`. Verified by hash to be **different** from the token that passed through chat (that one remains on the rotation list). Never printed, logged, or committed. |
+| **Result** | **6/6 checks PASS** — order placed, stop verified, trade closed, account flat |
+
+## Pre-run gate
+
+`python3 -m pytest -q` → 262 passed; `ruff check src tests scripts` clean,
+both before the network call.
+
+## Exact command and complete output
+
+```
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"
+2026-07-30T18:26:43Z
+$ python3 scripts/broker_sandbox_lifecycle.py --confirm-demo-order
+
+RESULT CHECK
+PASS   account reachable
+       balance=99999.9998
+PASS   pricing fetched
+       bid=1.15260
+PASS   1-unit market order filled
+       {'orderCreateTransaction': {'id': '10', 'accountID': '101-001-…-001', 'userID': …, 'batchID': '10', 'requestID': '…', 'time': '20
+PASS   broker-held stop confirmed active (§0.9)
+       stop={'id': '12', 'createTime': '2026-07-30T18:26:45.082814971Z', 'type': 'STOP_LOSS', 'tradeID': '11', 'price': '1.14760', 'timeInForce': 'GTC', 'triggerCondition': 'DEFAULT', 'triggerMode': 'TOP_OF_BOOK', 'state': 'PENDING'}
+PASS   trade closed
+       {'orderCreateTransaction': {'id': '13', 'accountID': '101-001-…-001', 'userID': …, 'batchID': '13', 'reque
+PASS   account flat after lifecycle
+
+6/6 lifecycle checks passed.
+exit=0
+```
+
+Account id and user id are redacted above beyond the broker-environment
+prefix; the script prints raw transaction dicts, so redaction here is
+manual and deliberate. No token appears in the output.
+
+## Verdict per lifecycle check
+
+| Check | Result | Evidence |
+|---|---|---|
+| Account reachable (practice host) | **PASS** | balance 99999.9998 returned |
+| Pricing fetched | **PASS** | EUR_USD closeout bid 1.15260 |
+| 1-unit EUR_USD market order filled | **PASS** | fill transaction, trade id 11 |
+| Broker-held stop confirmed active (§0.9) | **PASS** | STOP_LOSS id 12 @ 1.14760, GTC, state PENDING, bound to trade 11 |
+| Trade closed | **PASS** | closing fill transaction id 13 |
+| Account flat after lifecycle | **PASS** | no open trade ids remain |
+
+**6/6 — the §22 Phase 4 "demo lifecycle tests" deliverable is satisfied.**
+The stop was broker-held and price-exact (bid 1.15260 − 50 pips = 1.14760),
+confirming §0.9 end-to-end against the real venue rather than the fake
+broker — the integration truth the 21-finding adversarial review said unit
+tests against a friendly fake could not provide.
+
+Scope limits, stated plainly: this validates **transport and order
+mechanics only**. It is not a strategy trade, spends no §12.4 test, and
+says nothing about fill quality or slippage — practice-feed caveat F-5
+still stands, and live re-audit (F-2) remains a Phase 7 gate.
