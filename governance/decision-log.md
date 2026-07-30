@@ -129,8 +129,21 @@ too-friendly fake prove intent, not integration truth — the live practice
 lifecycle run (Phase 4 remaining item) and periodic adversarial review are
 both mandatory before Phase 6.
 
+**2026-07-30 · First real-data replay (owner re-attached the FMP
+connector).** Six weeks of M5 GBPUSD/EURUSD pulled via the licensed FMP
+connector; feed timestamps pinned empirically to America/New_York (D-7
+discipline). 31 completed London sessions per pair replayed through the
+full deterministic pipeline with untouched v0.1.0 parameters. GBP_USD:
+19 trades, net −$3.97, PF 0.73. EUR_USD: 11 trades, net +$2.66, PF 1.57.
+Framework findings: 24/30 trades exit FLATTENED at 11:00 (exit-logic
+challenger hypothesis registered for the §12.4 multiple-testing record);
+every stopped trade lost exactly the approved risk or less after costs;
+the F-1 margin overlay bound as audited. 30 trades is below every §12.6
+threshold — NOT validation, no promotion implications (§0.5). Report:
+`reports/validation/2026-07-30-london-breakout-v0.1.0-replay.md`.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
-`main`; re-enable the upgraded FMP connector (or select the historical tick
-source) for real-data backtesting; run scripts/broker_sandbox_lifecycle.py
-once OANDA network access exists (fresh VM or locally).
+`main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access
+exists (fresh VM or locally); extend the replay sample backward as FMP
+history allows before any parameter research begins.
