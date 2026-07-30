@@ -664,6 +664,30 @@ divergence days. Suite 284 → 305. Pass 2 (Alpha/Beta agents, packet runtime,
 Arbiter, analog engine, experiment ledger) is scoped separately. v2.0.0 is
 committed verbatim (SHA-256 96633f32…) and v1.1.4 preserved unedited (§0.11).
 
+**2026-07-30 · Return target clarified as a GOAL, not a hard deadline
+(owner).** Earlier in the session the owner described the firm's mandate as a
+5–6 figure return within 30–45 days, framed as existential. The implementer
+answered with the arithmetic: from $250 that is a 40x–400x compound return,
+requiring roughly 12–19% per session sustained; at the Exceptional tier's 10%
+risk with 1.5R targets it demands a win rate above 90%, and above 100% —
+literally impossible — for the 30-day case. Measured champion win rate is
+48.4% with negative expectancy, and the F-1 margin overlay caps deployable
+risk near $1.80 on a 16-pip stop at this equity. The owner has now clarified
+the target is aspirational, not a hard constraint.
+
+Recorded because the distinction is load-bearing for behavior, not merely
+morale. A hard deadline creates pressure toward exactly the actions §3.5
+prohibits — forcing setups to reach a target, increasing frequency in a quiet
+session, continuing to trade because profit is below a desired amount, and
+expanding risk after gains — and toward the §12.x shortcuts (skipping the
+probation sample, trusting a flattering number) that the achievable-fill
+defect showed are easy to fall into. With the target held as a goal, the
+firm's operating posture is unchanged and unambiguous: §3.5's no-profit-target
+doctrine governs, "no trade" remains a preferred outcome (§0 rule 6), and no
+risk limit, evidence threshold, or promotion gate flexes for a calendar date.
+No configuration or code change follows from this entry; it exists so a future
+session reading the earlier framing does not infer license to trade harder.
+
 **Standing owner to-dos:** none outstanding. Next action is owner-side:
 begin Phase 6 shadow operation on the trading laptop when ready (§22, §13).
 Before any new strategy research, note that §12.4's multiple-testing ledger
