@@ -22,6 +22,7 @@ import inspect
 import pathlib
 from decimal import Decimal
 
+import pydantic
 import pytest
 from pydantic import ValidationError
 
@@ -833,3 +834,57 @@ def _executable_source(module) -> str:
     lines = [line for line in source.splitlines() if not line.lstrip().startswith("#")]
     parts = "\n".join(lines).split('"""')
     return "".join(parts[::2])
+
+
+class TestQueryFieldRegistration:
+    """§6.4: the cherry-pick prohibition is only structural while the query
+    cannot encode the answer it is meant to justify.
+
+    The denylist alone did not deliver that — a field named `favourable_only`
+    passed it, confirmed by probe. These tests pin the stronger guarantee and,
+    more importantly, would fail if someone reverted to a denylist-only guard.
+    """
+
+    def test_the_guard_passes_on_the_real_model(self) -> None:
+        analogs._reject_direction_fields()  # does not raise
+
+    def test_a_denylisted_direction_field_is_caught(self) -> None:
+        self._assert_guard_trips_on(side=(str, pydantic.Field(default="long")))
+
+    def test_a_direction_field_the_denylist_never_heard_of_is_caught(self) -> None:
+        """The actual gap. `favourable_only` is not in FORBIDDEN_QUERY_FIELDS and
+        never would be — the field that defeats this control will not be named
+        something a denylist author thought of."""
+        assert "favourable_only" not in analogs.FORBIDDEN_QUERY_FIELDS
+        self._assert_guard_trips_on(favourable_only=(bool, pydantic.Field(default=True)))
+
+    def test_an_innocuous_addition_also_trips_it(self) -> None:
+        """Deliberate: the guard cannot judge intent, so it stops every change
+        and makes a human state that the new field is not a direction in
+        disguise. A guard that only stops fields it recognizes as dangerous is
+        the denylist again."""
+        self._assert_guard_trips_on(notes=(str, pydantic.Field(default="")))
+
+    def test_removing_a_field_is_caught_too(self) -> None:
+        # Dropping `known_coverage_gaps` would silently undisclose the coverage
+        # holes §12.7 rule 6 requires a report to state.
+        reduced = {
+            name: (info.annotation, info)
+            for name, info in analogs.AnalogQuery.model_fields.items()
+            if name != "regime_filter"
+        }
+        shrunk = pydantic.create_model("AnalogQuery", **reduced)
+        self._assert_guard_trips_on(_model=shrunk)
+
+    @staticmethod
+    def _assert_guard_trips_on(_model=None, **extra_fields):
+        real = analogs.AnalogQuery
+        model = _model or pydantic.create_model(
+            "AnalogQuery", __base__=real, **extra_fields
+        )
+        try:
+            analogs.AnalogQuery = model
+            with pytest.raises(RuntimeError, match=r"§6\.4|field set changed"):
+                analogs._reject_direction_fields()
+        finally:
+            analogs.AnalogQuery = real

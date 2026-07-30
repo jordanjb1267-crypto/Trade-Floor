@@ -419,20 +419,66 @@ class AnalogQuery(_Strict):
         )
 
 
+# The exact field set `AnalogQuery` is registered to have. A denylist of
+# direction-shaped names catches `side` and `direction`, but not `favourable_only`
+# or `bullish` — and the field that defeats this control will not be named
+# something a denylist author thought of. Pinning the whole set inverts the
+# burden: ANY new field trips the guard until someone deliberately registers it
+# and, in doing so, states that it is not a direction in disguise.
+REGISTERED_QUERY_FIELDS = frozenset(
+    {
+        "as_of_utc",
+        "cost_model",
+        "data_source_id",
+        "embargo_days",
+        "end_date",
+        "horizon_minutes",
+        "instrument",
+        "known_coverage_gaps",
+        "pre_registered_hypothesis",
+        "query_label",
+        "regime_filter",
+        "similarity_method",
+        "start_date",
+        "threshold_scales",
+        "tolerances",
+    }
+)
+
+
 def _reject_direction_fields() -> None:
-    """Fail at import if `AnalogQuery` ever gains a direction-shaped field.
+    """Fail at import if `AnalogQuery`'s field set changes at all.
 
     §6.4's prohibition — "must not cherry-pick a favorable analog set after
     seeing the desired trade direction" — is only structural while the query
     cannot express a direction. A reviewer might not notice a `side: str` field
     added to a 20-field model; this notices before the module finishes loading.
+
+    Two checks, deliberately overlapping. The denylist gives a precise, readable
+    error for the obvious case. The registered-set check is the one that
+    actually closes the hole, because it does not depend on anyone having
+    guessed the offending name in advance.
     """
-    present = FORBIDDEN_QUERY_FIELDS & set(AnalogQuery.model_fields)
+    actual = set(AnalogQuery.model_fields)
+
+    present = FORBIDDEN_QUERY_FIELDS & actual
     if present:
         raise RuntimeError(
             f"AnalogQuery declares {sorted(present)}: an analog search may not be "
             f"conditioned on the direction it is being used to justify (§6.4). The "
             f"outcome distribution is reported for BOTH directions instead."
+        )
+
+    added = actual - REGISTERED_QUERY_FIELDS
+    removed = REGISTERED_QUERY_FIELDS - actual
+    if added or removed:
+        raise RuntimeError(
+            f"AnalogQuery's field set changed (added={sorted(added)}, "
+            f"removed={sorted(removed)}). An analog search is only free of the §6.4 "
+            f"cherry-pick hazard while its definition cannot encode the answer it is "
+            f"meant to produce, so every field is registered explicitly. If the new "
+            f"field genuinely cannot express a trade direction or a favourability "
+            f"filter, add it to REGISTERED_QUERY_FIELDS and say so in the commit."
         )
 
 
