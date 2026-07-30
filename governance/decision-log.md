@@ -520,12 +520,42 @@ coverage holes. This is the first application of the newly ratified
 its P&L is correct. Report bodies remain unedited — only the annotation
 banners changed (§0.11).
 
+**2026-07-30 · `OANDA_DEMO_API_TOKEN` repaired; connection audit reproduced
+unassisted (11/11).** Attempt 3 recorded a reproducibility caveat: the variable
+held a valid token with `OANDA_DEMO_ACCOUNT_ID=<id>` concatenated onto it, so
+that run required extracting the token in-process and could not be reproduced
+by simply invoking the script. The owner corrected the variable and reports
+`scripts/verify_oanda_demo.py` returning **11/11, exit 0**, with no files
+changed — no in-process repair, no arguments. The caveat is therefore closed
+and the Phase 4 tooling is reproducible from a clean session.
+
+Evidence provenance, stated plainly per §12.7's independence posture: attempt
+3's numbers were observed directly by the implementer; **this 11/11 is
+owner-reported and was not independently observed here.** The session that
+found the malformed value still carries the pre-repair environment — a
+container inherits its variables at start, so an environment change reaches
+only newly created sessions, and re-checking from the old one returned a
+byte-identical value (same length, same segment split, same digest). That is
+evidence of a stale container, not of a failed repair; confirmation
+necessarily came from a fresh session. The owner's report also independently
+re-derives two things already in this log and in attempt 3 — F-1 (GBP_USD 5%
+per-instrument vs 2% account-level; sizing on the account rate would oversize
+GBP_USD by 2.5×, §3.2) and the scope limit (connectivity and account shape
+only; nothing about fill quality or edge; `live_allowed` remains empty
+everywhere, §12.5/§24). Both readings are correct and unchanged.
+
+Noted for a future session, not acted on: `CLAUDE.md` and `.env.example`
+describe holding tokens in an untracked `.env`, but nothing in the repo loads
+one — `credentials.py` and both scripts read `os.environ` only, and there is no
+dotenv dependency. An operator who follows the documented guidance literally
+would still have to export the variables by hand. Either wire up `.env`
+loading or reword the guidance; leaving both as they are invites exactly the
+class of misconfiguration this week produced twice.
+
 **Standing owner to-dos:** rotate the **FMP** token that passed through chat
 during setup (the OANDA practice token was rotated — confirmed 2026-07-30);
-repair `OANDA_DEMO_API_TOKEN`, which currently holds the token with
-`OANDA_DEMO_ACCOUNT_ID=<id>` concatenated onto it (set it to the bare token;
-leave `OANDA_DEMO_ACCOUNT_ID` unset to use the first account on the token, or
-pin a real account id) so the lifecycle script runs unassisted; extend the
-OANDA broker-feed fixtures backward (Apr–Jun) before any new strategy research
-spends a §12.4 test. **Cleared 2026-07-30:** OANDA network access, the Phase 4
-demo lifecycle run, and OANDA practice token rotation.
+extend the OANDA broker-feed fixtures backward (Apr–Jun) before any new
+strategy research spends a §12.4 test; resolve the `.env` documentation/loading
+mismatch described above. **Cleared 2026-07-30:** OANDA network access, the
+Phase 4 demo lifecycle run, OANDA practice token rotation, and the
+`OANDA_DEMO_API_TOKEN` repair (audit reproduced unassisted, owner-reported).

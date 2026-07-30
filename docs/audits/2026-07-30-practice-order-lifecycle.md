@@ -202,6 +202,21 @@ still malformed and must be corrected by the owner before an unassisted re-run
 will work. No repair heuristic was added to the scripts: silently trimming a
 credential would mask exactly this class of paste error.
 
+> **Addendum, 2026-07-30 (same day) — caveat closed.** The owner corrected the
+> variable and reports `scripts/verify_oanda_demo.py` returning **11/11,
+> exit 0** from a clean session, with no in-process extraction and no files
+> changed. The Phase 4 tooling is therefore reproducible as documented. The
+> paragraph above is retained as written because it was true when the run was
+> performed (§0.11).
+>
+> Provenance: unlike the figures elsewhere in this attempt, that 11/11 is
+> **owner-reported and was not independently observed here** — the session that
+> diagnosed the malformed value still holds the pre-repair environment, since a
+> container inherits its variables at start and an environment change reaches
+> only newly created sessions. Re-reading it from the old session returned a
+> byte-identical value, which evidences a stale container rather than a failed
+> repair.
+
 Whether the inserted token is the **rotated** one or the chat-exposed token
 from setup cannot be determined from this side; the rotation to-do stays open
 until the owner confirms it.
