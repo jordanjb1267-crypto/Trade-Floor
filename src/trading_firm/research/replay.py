@@ -32,6 +32,10 @@ from trading_firm.sessions.clock import SessionClock
 from trading_firm.sizing.engine import size_position
 from trading_firm.strategies.breakout import BreakoutParams, first_breakout_signal
 from trading_firm.strategies.manifest import StrategyManifest
+from trading_firm.strategies.sweep_reversal import (
+    SweepReversalParams,
+    first_sweep_reversal_signal,
+)
 
 CENT = Decimal("0.01")
 RESEARCH_BASELINE_SCORE = 75  # fixed Standard-tier baseline until §12.6 calibration exists
@@ -137,18 +141,28 @@ def replay_session(
     exit_policy: ExitPolicy | None = None,
     spreads: SpreadSeries | None = None,
 ) -> SessionOutcome:
-    if manifest.strategy_id != "london_breakout":
-        raise NotImplementedError(f"no replay rules implemented for {manifest.strategy_id}")
-
     features = session_features(series, session_date, clock, spec.pip_size)
     if features is None:
         return SessionOutcome(session_date, SessionStatus.NO_FEATURES)
 
     boundaries = clock.boundaries(session_date)
     active_bars = series.between(boundaries["activation"], boundaries["entry_cutoff"])
-    signal = first_breakout_signal(
-        features, active_bars, BreakoutParams.from_manifest_params(manifest.params), spec.pip_size
-    )
+    if manifest.strategy_id == "london_breakout":
+        signal = first_breakout_signal(
+            features,
+            active_bars,
+            BreakoutParams.from_manifest_params(manifest.params),
+            spec.pip_size,
+        )
+    elif manifest.strategy_id == "asian_range_sweep_reversal":
+        signal = first_sweep_reversal_signal(
+            features,
+            active_bars,
+            SweepReversalParams.from_manifest_params(manifest.params),
+            spec.pip_size,
+        )
+    else:
+        raise NotImplementedError(f"no replay rules implemented for {manifest.strategy_id}")
     if signal is None:
         return SessionOutcome(session_date, SessionStatus.NO_SIGNAL)
 
@@ -205,12 +219,17 @@ def replay_session(
         return mid - half_spread(bar) if is_long else mid + half_spread(bar)
 
     # Conservative simulation: same-bar stop priority, then remaining bars
-    # until the flatten boundary — which is inviolate (§14, F-5).
+    # until the flatten boundary — which is inviolate (§14, F-5). Strategies
+    # entering AT a bar's close (entry_at_close) start exit checks on the
+    # NEXT bar: pre-entry price action inside the trigger bar must never
+    # exit the trade.
     manage_bars = [
         bar
         for bar in series.between(trigger_bar.ts, boundaries["flatten"])
         if bar.ts >= trigger_bar.ts
     ]
+    if getattr(signal, "entry_at_close", False):
+        manage_bars = [bar for bar in manage_bars if bar.ts > trigger_bar.ts]
     risk_distance = candidate.stop_distance()
     if exit_policy is None:
         target_price = signal.target_price
@@ -262,7 +281,9 @@ def replay_session(
                 current_stop = tighter(current_stop, new_stop)
                 breakeven_level = None
     if outcome is None:
-        last_bar = manage_bars[-1]
+        # entry on the final pre-flatten bar leaves no later bars: flatten
+        # against the trigger bar itself.
+        last_bar = manage_bars[-1] if manage_bars else trigger_bar
         exit_price, exit_ts, outcome = (
             exit_exec(last_bar, last_bar.close),
             boundaries["flatten"],

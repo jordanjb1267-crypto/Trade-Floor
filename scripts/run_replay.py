@@ -41,10 +41,12 @@ NY = ZoneInfo(SOURCE_TZ)
 
 
 def main() -> int:
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         print(__doc__)
+        print("Optional 4th argument: strategy_id (default london_breakout).")
         return 2
     fixture, instrument, margin_rate = sys.argv[1], sys.argv[2], Decimal(sys.argv[3])
+    strategy_id = sys.argv[4] if len(sys.argv) == 5 else "london_breakout"
 
     payload = json.loads(Path(fixture).read_text())
     spreads = None
@@ -75,7 +77,7 @@ def main() -> int:
     engine = RiskEngine(config, clock)
     manifest = load_manifests(
         BASE_CONFIG_PATH.parents[1] / "research" / "strategies"
-    )["london_breakout"]
+    )[strategy_id]
     spec = InstrumentSpec(name=instrument, margin_rate=margin_rate)
     # only completed sessions: require bars beyond the entry cutoff
     last_bar_london = series.bars[-1].ts.astimezone(LONDON)

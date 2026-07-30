@@ -1,5 +1,7 @@
-# Asian Range Sweep and Reversal — research manifest (§11). Rule logic not yet
-# implemented (declared for the research queue); no risk permissions.
+# Asian Range Sweep and Reversal — research manifest (§11). Rule logic
+# implemented 2026-07-30 (strategies/sweep_reversal.py); first-guess params
+# declared below BEFORE any replay of this strategy ran (§12.4). Research
+# only; no risk permissions.
 strategy_id: asian_range_sweep_reversal
 version: 0.1.0
 status: research
@@ -15,14 +17,23 @@ exit_rules:
 expiration_rules:
   - Candidate expires at the entry cutoff (10:30 London)
 regime_filters:
-  - Sweep depth and re-entry speed thresholds (to be specified in research)
+  - Asian range width 15-60 pips (as london_breakout)
+  - Sweep depth 3-25 pips beyond the extreme; deeper is acceptance (no setup)
+  - Close back inside within 3 bars of the sweep start, else acceptance
 news_filters:
   - No entry when the economic-calendar state is unknown (fail closed, §0.10)
 spread_limits:
   max_spread_pips: 2.5
 slippage_limits:
   max_slippage_pips: 1.0
-params: {}
+params:
+  min_sweep_pips: 3
+  max_sweep_pips: 25
+  reentry_within_bars: 3
+  stop_buffer_pips: 2
+  stop_max_pips: 40
+  min_range_pips: 15
+  max_range_pips: 60
 risk_permissions:
   standard: false
   strong: false

@@ -181,6 +181,8 @@ class TestReplayRange:
         assert "NOT validation" in report.disclaimer
 
     def test_unimplemented_strategy_raises(self, env: dict) -> None:
+        # asian_range_sweep_reversal gained rules 2026-07-30; continuation
+        # remains queue-declared only.
         manifests = load_manifests(BASE_CONFIG_PATH.parents[1] / "research" / "strategies")
         with pytest.raises(NotImplementedError):
             replay_session(
@@ -189,6 +191,6 @@ class TestReplayRange:
                 config=env["config"],
                 clock=env["clock"],
                 engine=env["engine"],
-                manifest=manifests["asian_range_sweep_reversal"],
+                manifest=manifests["london_continuation"],
                 spec=env["spec"],
             )
