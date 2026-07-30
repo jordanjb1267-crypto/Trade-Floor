@@ -181,9 +181,12 @@ class TestReplayRange:
         assert "NOT validation" in report.disclaimer
 
     def test_unimplemented_strategy_raises(self, env: dict) -> None:
-        # asian_range_sweep_reversal gained rules 2026-07-30; continuation
-        # remains queue-declared only.
+        # All three declared strategies gained rules 2026-07-30, so the
+        # guard is exercised with a synthetic unknown strategy id.
         manifests = load_manifests(BASE_CONFIG_PATH.parents[1] / "research" / "strategies")
+        unknown = manifests["london_breakout"].model_copy(
+            update={"strategy_id": "not_a_real_strategy"}
+        )
         with pytest.raises(NotImplementedError):
             replay_session(
                 env["series"],
@@ -191,6 +194,6 @@ class TestReplayRange:
                 config=env["config"],
                 clock=env["clock"],
                 engine=env["engine"],
-                manifest=manifests["london_continuation"],
+                manifest=unknown,
                 spec=env["spec"],
             )
