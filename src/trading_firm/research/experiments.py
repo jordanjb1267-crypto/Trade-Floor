@@ -321,10 +321,30 @@ class ExperimentLedger:
         self.alpha = alpha
         self.resolution_floor = resolution_floor
         # §12.7 / A-1: defaults False and is never set True by library code.
-        self.publication_cleared = publication_cleared
-        self.review_reference = review_reference
+        # Held privately behind read-only properties. A plain writable
+        # attribute would let any caller flip the flag after construction and
+        # walk an unreviewed number straight into a promotion record — the gate
+        # has to be harder to open than the thing it guards is tempting.
+        if publication_cleared and not (review_reference or "").strip():
+            raise ValueError(
+                "publication_cleared cannot be set True without a review_reference: §12.7 "
+                "requirement 7 makes the review outcome an audit-trail entry, so a clearance "
+                "with nothing to point at is not a clearance (§12.7, A-1)"
+            )
+        self._publication_cleared = publication_cleared
+        self._review_reference = review_reference
         self._samples: dict[str, Sample] = {}
         self._experiments: dict[str, Experiment] = {}
+
+    @property
+    def publication_cleared(self) -> bool:
+        """§12.7 gate. Read-only: clearance is granted at construction by a
+        caller that has an adversarial-review record, never by assignment."""
+        return self._publication_cleared
+
+    @property
+    def review_reference(self) -> str | None:
+        return self._review_reference
 
     # ------------------------------------------------------------------ samples
 
@@ -701,6 +721,12 @@ class ExperimentLedger:
         report is the act §12.7 gates, so the gate lives on the formatter and
         not on the arithmetic — the counts above stay available to reviewers
         while the report stays blocked.
+
+        Only the flag is checked here. The companion requirement — that a
+        clearance point at an actual review record (§12.7 requirement 7) — is
+        enforced at construction instead, because both fields are read-only
+        from then on. Re-checking it here would be unreachable code asserting a
+        guarantee that already holds.
         """
         if not self.publication_cleared:
             raise ValueError(
@@ -708,12 +734,6 @@ class ExperimentLedger:
                 "published in a validation report, cited in a promotion record, or counted "
                 "toward §12.6 minimum evidence until the code paths producing it have passed "
                 "an independent, refutation-default adversarial review (§12.7, A-1)"
-            )
-        if not (self.review_reference or "").strip():
-            raise ValueError(
-                "publication_cleared is True but no review_reference is recorded: §12.7 "
-                "requirement 7 makes the review outcome an audit-trail entry, so a clearance "
-                "with nothing to point at is not a clearance (§12.7, §0.11)"
             )
 
     def publication_table(self, sample_id: str, alpha: Decimal | None = None) -> str:

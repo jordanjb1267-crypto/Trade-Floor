@@ -715,8 +715,22 @@ class TestPublicationGate:
         assert spent.status(GBP_SAMPLE_ID).tests_recorded == 6
 
     def test_clearance_without_a_review_reference_is_not_a_clearance(self) -> None:
-        ledger = spent_gbp_ledger(publication_cleared=True)
+        # Rejected at CONSTRUCTION, not at publication: a ledger that believes
+        # it is cleared while pointing at no review should never exist to be
+        # asked. §12.7 requirement 7 makes the review outcome an audit entry.
         with pytest.raises(ValueError, match=r"not a clearance"):
+            spent_gbp_ledger(publication_cleared=True)
+
+    def test_the_gate_cannot_be_flipped_after_construction(self) -> None:
+        # The defect this test exists for: a plain writable attribute would let
+        # any caller clear the gate at runtime and publish an unreviewed number.
+        ledger = spent_gbp_ledger()
+        assert ledger.publication_cleared is False
+        with pytest.raises(AttributeError):
+            ledger.publication_cleared = True
+        with pytest.raises(AttributeError):
+            ledger.review_reference = "docs/reviews/fabricated.md"
+        with pytest.raises(ValueError, match=r"publication_cleared is False"):
             ledger.publication_table(GBP_SAMPLE_ID)
 
     def test_a_cleared_table_states_its_own_denominator_and_trial_count(self) -> None:
