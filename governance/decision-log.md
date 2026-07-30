@@ -142,6 +142,24 @@ the F-1 margin overlay bound as audited. 30 trades is below every §12.6
 threshold — NOT validation, no promotion implications (§0.5). Report:
 `reports/validation/2026-07-30-london-breakout-v0.1.0-replay.md`.
 
+**2026-07-30 · Exit-logic challenger evaluated and REJECTED (§12.4).** The
+registered hypothesis (flatten-dominated exits mean exit logic is the binding
+constraint) was tested under a pre-registered protocol: three variants fixed
+in advance, GBP-only, discovery/confirmation split at 2026-06-16 declared
+before any replay, mechanical selection (≥20 discovery trades, expectancy>0,
+max PF advances alone). Replay engine gained an ExitPolicy parameterization
+(next-bar breakeven trail, stops only tighten — §0.7 widening remains
+unrepresentable; unit-tested, suite now 199). Outcome: V1 (1.5R+BE@1.0R) was
+bit-identical to the champion — the trail never fired usefully; V3
+(1.0R+BE@0.5R) was worst; V2 (plain 1.0R target) squeaked past discovery
+(PF 1.03, +$0.02/trade) then failed confirmation outright (PF 0.66,
+−$0.26/trade, $2.34 worse than the champion on the identical trade set —
+capping winners at 1R clipped every runner and saved no loser). Hypothesis
+closed at these parameters; champion v0.1.0 stands; no v0.2.0 manifest.
+Three exit-variant tests are recorded as spent against this GBP sample —
+future exit research starts at test #4 or brings new data. Report:
+`reports/validation/2026-07-30-exit-challenger-eval.md`.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access

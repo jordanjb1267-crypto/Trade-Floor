@@ -1,3 +1,9 @@
-from trading_firm.research.replay import ReplayReport, SessionOutcome, replay_range, replay_session
+from trading_firm.research.replay import (
+    ExitPolicy,
+    ReplayReport,
+    SessionOutcome,
+    replay_range,
+    replay_session,
+)
 
-__all__ = ["ReplayReport", "SessionOutcome", "replay_range", "replay_session"]
+__all__ = ["ExitPolicy", "ReplayReport", "SessionOutcome", "replay_range", "replay_session"]

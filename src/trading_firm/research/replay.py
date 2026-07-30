@@ -50,6 +50,20 @@ class TradeOutcome(enum.Enum):
 
 
 @dataclass(frozen=True)
+class ExitPolicy:
+    """Challenger exit parameterization (§15). None anywhere = champion v0.1.0.
+
+    breakeven_trigger_r moves the stop to the entry (trigger) price once the
+    trade has run that many R in favor — stops only ever TIGHTEN (§0.7:
+    stop widening is unrepresentable here). Activation applies from the NEXT
+    bar, which is pessimistic for the challenger (within-bar sequence is
+    unknowable on M5 data)."""
+
+    target_r: Decimal = Decimal("1.5")
+    breakeven_trigger_r: Decimal | None = None
+
+
+@dataclass(frozen=True)
 class SessionTrade:
     direction: Direction
     units: int
@@ -119,6 +133,7 @@ def replay_session(
     spec: InstrumentSpec,
     equity: Decimal = Decimal("250"),
     spread_pips: Decimal = Decimal("2.0"),
+    exit_policy: ExitPolicy | None = None,
 ) -> SessionOutcome:
     if manifest.strategy_id != "london_breakout":
         raise NotImplementedError(f"no replay rules implemented for {manifest.strategy_id}")
@@ -184,24 +199,52 @@ def replay_session(
         for bar in series.between(trigger_bar.ts, boundaries["flatten"])
         if bar.ts >= trigger_bar.ts
     ]
+    risk_distance = candidate.stop_distance()
+    if exit_policy is None:
+        target_price = signal.target_price
+        breakeven_level: Decimal | None = None
+    else:
+        target_price = (
+            signal.trigger_price + exit_policy.target_r * risk_distance
+            if is_long
+            else signal.trigger_price - exit_policy.target_r * risk_distance
+        )
+        breakeven_level = (
+            (
+                signal.trigger_price + exit_policy.breakeven_trigger_r * risk_distance
+                if is_long
+                else signal.trigger_price - exit_policy.breakeven_trigger_r * risk_distance
+            )
+            if exit_policy.breakeven_trigger_r is not None
+            else None
+        )
+
+    current_stop = signal.stop_price
     exit_price: Decimal | None = None
     exit_ts: dt.datetime | None = None
     outcome: TradeOutcome | None = None
     for bar in manage_bars:
-        stop_hit = bar.low <= signal.stop_price if is_long else bar.high >= signal.stop_price
-        target_hit = (
-            bar.high >= signal.target_price if is_long else bar.low <= signal.target_price
-        )
+        stop_hit = bar.low <= current_stop if is_long else bar.high >= current_stop
+        target_hit = bar.high >= target_price if is_long else bar.low <= target_price
         if stop_hit:  # worst case first
-            exit_price, exit_ts, outcome = exit_exec(signal.stop_price), bar.ts, TradeOutcome.STOP
+            exit_price, exit_ts, outcome = exit_exec(current_stop), bar.ts, TradeOutcome.STOP
             break
         if target_hit:
             exit_price, exit_ts, outcome = (
-                exit_exec(signal.target_price),
+                exit_exec(target_price),
                 bar.ts,
                 TradeOutcome.TARGET,
             )
             break
+        # Trail AFTER exit checks: activation applies from the next bar
+        # (pessimistic for the challenger). Stops only tighten (§0.7).
+        if breakeven_level is not None:
+            trail_armed = bar.high >= breakeven_level if is_long else bar.low <= breakeven_level
+            if trail_armed:
+                new_stop = signal.trigger_price
+                tighter = max if is_long else min
+                current_stop = tighter(current_stop, new_stop)
+                breakeven_level = None
     if outcome is None:
         last_bar = manage_bars[-1]
         exit_price, exit_ts, outcome = (
@@ -235,6 +278,7 @@ def replay_range(
     spec: InstrumentSpec,
     equity: Decimal = Decimal("250"),
     spread_pips: Decimal = Decimal("2.0"),
+    exit_policy: ExitPolicy | None = None,
 ) -> ReplayReport:
     outcomes = [
         replay_session(
@@ -247,6 +291,7 @@ def replay_range(
             spec=spec,
             equity=equity,
             spread_pips=spread_pips,
+            exit_policy=exit_policy,
         )
         for day in session_dates
     ]
