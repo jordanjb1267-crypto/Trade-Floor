@@ -268,6 +268,20 @@ exposed: every fresh session now inherits CLAUDE.md, the hooks, and the
 constitutional schema from its first clone. `live_allowed` remains empty
 everywhere; nothing in the merge changes promotion state (§12.5, §24).
 
+**2026-07-30 · Broker-feed fixtures extended to full history; first
+complete canonical-feed replay.** An owner-directed session extended the
+OANDA practice fixtures to mirror FMP coverage (GBP_USD 2026-03-30→07-29,
+25,337 M5 candles; EUR_USD 2026-06-08→07-29, 10,943; July files verified
+as strict subsets and removed) — the fixture-extension standing item is
+done. Full-sample replay on the canonical feed with measured per-bar
+costs: GBP_USD 65 trades 31W/34L net −$9.02 PF 0.78 maxDD $17.06; EUR_USD
+18 trades 11W/7L net +$0.67 PF 1.07. The champion's costs-eat-edge verdict
+hardens on the venue's own feed, and FMP's earlier EUR optimism (PF 1.57
+on 11 trades) shrinks toward noise — consistent with the feed-noise
+finding. Larger GBP trade count vs FMP (65 vs 48) reflects the broker
+feed's more complete session coverage. NOT validation; still below §12.6
+thresholds (§0.5).
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; run scripts/broker_sandbox_lifecycle.py
 once OANDA network access exists — prerequisites confirmed 2026-07-30: a
