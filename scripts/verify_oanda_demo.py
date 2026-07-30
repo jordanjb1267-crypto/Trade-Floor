@@ -20,6 +20,11 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from trading_firm.env_file import load_env_file  # noqa: E402
 
 HOST = "api-fxpractice.oanda.com"  # practice ONLY — do not change to fxtrade (§13)
 INSTRUMENTS = ["GBP_USD", "EUR_USD"]
@@ -38,6 +43,7 @@ def get(token: str, path: str):
 
 
 def main() -> int:
+    load_env_file()  # §17: an untracked .env is read; exported vars still win
     token = os.environ.get("OANDA_DEMO_API_TOKEN")
     if not token:
         print("FAIL: set OANDA_DEMO_API_TOKEN (never hard-code it; see .env.example)")
