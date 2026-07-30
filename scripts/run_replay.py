@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from trading_firm.config import BASE_CONFIG_PATH, load_config  # noqa: E402
-from trading_firm.market_data import from_fmp_rows  # noqa: E402
+from trading_firm.market_data import from_fmp_rows, from_oanda_candles  # noqa: E402
 from trading_firm.models import InstrumentSpec  # noqa: E402
 from trading_firm.research import replay_range  # noqa: E402
 from trading_firm.research.replay import SessionStatus  # noqa: E402
@@ -46,10 +46,25 @@ def main() -> int:
         return 2
     fixture, instrument, margin_rate = sys.argv[1], sys.argv[2], Decimal(sys.argv[3])
 
-    rows = json.loads(Path(fixture).read_text())
-    series = from_fmp_rows(
-        rows, instrument=instrument, granularity_minutes=5, source_tz=SOURCE_TZ
-    )
+    payload = json.loads(Path(fixture).read_text())
+    if isinstance(payload, dict) and "candles" in payload:
+        # OANDA practice fixture (scripts/fetch_oanda_candles.py): aware-UTC
+        # timestamps, no pinning question. Replay still uses mid + the
+        # configured spread assumption until spread-aware replay exists.
+        series = from_oanda_candles(
+            payload["candles"], instrument=instrument, granularity_minutes=5
+        )
+        session_dates = sorted({b.ts.astimezone(LONDON).date() for b in series.bars})
+    else:
+        series = from_fmp_rows(
+            payload, instrument=instrument, granularity_minutes=5, source_tz=SOURCE_TZ
+        )
+        session_dates = sorted(
+            {
+                datetime.fromisoformat(r["date"]).replace(tzinfo=NY).astimezone(LONDON).date()
+                for r in payload
+            }
+        )
     print(f"{instrument}: {len(series.bars)} bars, {len(series.quality_events)} quality events")
 
     config = load_config(BASE_CONFIG_PATH)
@@ -59,13 +74,6 @@ def main() -> int:
         BASE_CONFIG_PATH.parents[1] / "research" / "strategies"
     )["london_breakout"]
     spec = InstrumentSpec(name=instrument, margin_rate=margin_rate)
-
-    session_dates = sorted(
-        {
-            datetime.fromisoformat(r["date"]).replace(tzinfo=NY).astimezone(LONDON).date()
-            for r in rows
-        }
-    )
     # only completed sessions: require bars beyond the entry cutoff
     last_bar_london = series.bars[-1].ts.astimezone(LONDON)
     session_dates = [

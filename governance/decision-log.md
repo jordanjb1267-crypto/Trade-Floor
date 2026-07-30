@@ -226,6 +226,26 @@ on the PR #1 branch, so merging PR #1 to `main` is the control that makes
 every future session start constitutional. Practice token used for the
 fetch passed through chat and joins the rotation list.
 
+**2026-07-30 · Broker-feed fixtures landed; spreads measured; OANDA becomes
+the canonical research feed.** An owner-directed session ran the governed
+fetch script unmodified (read-only, practice host) and pushed M5 mid/ask/bid
+fixtures for both pairs (July 1–29) to this branch. Measured spreads:
+GBP_USD London-session median 1.90 / p95 2.10 pips — the 2.0-pip sizing
+assumption is nearly exact (tail excess on a stopped trade ≈0.4%, now
+measured); EUR_USD 1.60/1.70 — the flat assumption over-charges EUR;
+rollover blowout to 20 pips (~10×) reproduces F-5 exactly. Feed-robustness
+check (champion, identical parameters, 21 shared July sessions): 19/21
+per-session agreement on both pairs, but every disagreement is a marginal
+trigger flipped by sub-pip feed differences, and EUR's July net changes
+SIGN between feeds (+$0.72 FMP vs −$2.26 OANDA) — feed noise exceeds any
+measured edge, quantifying why nothing at this sample size is evidence
+(§12.6). Decision: OANDA practice fixtures are the canonical replay feed
+going forward (the venue paper/live will execute against); FMP remains the
+deep-history and cross-validation source. Spread-aware replay (per-bar
+bid/ask instead of the flat assumption) registered as framework work.
+run_replay.py now reads both fixture formats. PR #2 closed as superseded.
+Report: `reports/validation/2026-07-30-oanda-fixtures-spreads-feed-robustness.md`.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access
