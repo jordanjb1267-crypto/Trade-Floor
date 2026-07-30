@@ -208,6 +208,24 @@ mid/ask/bid so research can use measured spreads instead of the 2-pip
 assumption. Pure logic in `market_data/candle_fixture.py`, unit-tested
 against canned payloads; suite 206.
 
+**2026-07-30 · Parallel-session OANDA fetch reviewed (PR #2); not merged;
+feeds cross-validated.** A fresh session (needed because this VM's egress
+policy predates the owner's network change) fetched OANDA practice candles —
+but it branched from pre-Phase-1 `main`, never saw the constitution, and so
+produced: its own fetch script with an `OANDA_ENV=live` switch (live host
+outside the broker adapter — prohibited), H1 granularity (unusable for the
+M5 replay pipeline), mid-only prices (discarding the bid/ask advantage that
+justified OANDA over FMP), and a conflicting file layout. Verdict: PR #2 is
+not merged; close as superseded once M5 MAB fixtures are fetched onto the
+governed branch via the governed script. Salvage: the data itself is
+genuine — cross-validation at 247 shared timestamps puts OANDA H1 opens
+within 0.2 pips median / 0.7 pips max of the FMP M5 fixture, independent
+corroboration of both feeds. Lesson recorded: governance only binds
+sessions that can see it — CLAUDE.md, hooks, and the governed scripts live
+on the PR #1 branch, so merging PR #1 to `main` is the control that makes
+every future session start constitutional. Practice token used for the
+fetch passed through chat and joins the rotation list.
+
 **Standing owner to-dos:** rotate the FMP and OANDA practice tokens that
 passed through chat during setup; merge PR #1 to make v1.1.3 governing on
 `main`; run scripts/broker_sandbox_lifecycle.py once OANDA network access
