@@ -212,6 +212,12 @@ def parse_owner_command(text: str) -> ParsedCommand | None:
     return ParsedCommand(command=command, argument=argument)
 
 
+# A chat id is an integer — negative for groups and supergroups — or an
+# `@channelusername` for a public channel. Nothing else can receive a message.
+_CHAT_ID = re.compile(r"^(-?\d+|@[A-Za-z][A-Za-z0-9_]{4,})$")
+_TOKEN_SHAPE = re.compile(r"^\d{6,12}:[A-Za-z0-9_-]{30,}$")
+
+
 def _validate(name: str, raw: str | None) -> str:
     if raw is None or not raw.strip():
         raise TelegramConfigError(f"{name} not set (see .env.example; §17)")
@@ -228,6 +234,40 @@ def _validate(name: str, raw: str | None) -> str:
     return value
 
 
+def _validate_token(name: str, raw: str | None) -> str:
+    value = _validate(name, raw)
+    if not _TOKEN_SHAPE.match(value):
+        raise TelegramConfigError(
+            f"{name} is not shaped like a Telegram bot token (`<digits>:<secret>` from "
+            f"BotFather). Nothing was sent, and the value is not echoed here (§17)."
+        )
+    return value
+
+
+def _validate_chat_id(name: str, raw: str | None) -> str:
+    """Reject a well-formed value of the wrong KIND.
+
+    The generic check — non-empty, no whitespace, not a placeholder — passes a
+    bot's @username, which is exactly what was configured on the first real
+    attempt at this path. It is a perfectly valid string and it can never
+    receive a message; Telegram answers "chat not found" at send time, which
+    surfaces as a silent non-delivery during a session rather than as a
+    configuration error before one.
+
+    A validator that accepts an unusable value is the failure this codebase
+    keeps finding: it passes, so nobody looks again.
+    """
+    value = _validate(name, raw)
+    if not _CHAT_ID.match(value):
+        raise TelegramConfigError(
+            f"{name} must be the NUMERIC chat id (negative for a group), or "
+            f"@channelusername for a public channel. A bot's username is not a chat "
+            f"id and cannot receive messages. Message the bot, then read "
+            f"message.chat.id from /getUpdates (§19). Nothing was sent."
+        )
+    return value
+
+
 class TelegramNotifier:
     """Outbound §19 notifications. Holds the token; never surfaces it.
 
@@ -237,8 +277,8 @@ class TelegramNotifier:
     """
 
     def __init__(self, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) -> None:
-        self._token = _validate(TOKEN_VAR, os.environ.get(TOKEN_VAR))
-        self._chat_id = _validate(CHAT_VAR, os.environ.get(CHAT_VAR))
+        self._token = _validate_token(TOKEN_VAR, os.environ.get(TOKEN_VAR))
+        self._chat_id = _validate_chat_id(CHAT_VAR, os.environ.get(CHAT_VAR))
         self._timeout = timeout_seconds
 
     def __repr__(self) -> str:

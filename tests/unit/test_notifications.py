@@ -212,3 +212,68 @@ class TestNotificationKinds:
             assert notifier.send(NotificationKind.RISK_HALT, "session halted") is True
         assert '"disable_notification": false' in captured["body"]
         assert "risk_halt" in captured["body"]
+
+
+class TestAWellFormedValueOfTheWrongKindIsRejected:
+    """Found by running the preflight against a real configuration.
+
+    The generic check — non-empty, no whitespace, not a placeholder — passed a
+    bot's @username configured as TELEGRAM_CHAT_ID. It is a perfectly valid
+    string that can never receive a message: Telegram answers "chat not found"
+    at send time, so the failure surfaces as silent non-delivery during a
+    session rather than as a config error before one. A validator that accepts
+    an unusable value is the failure this codebase keeps finding — it passes, so
+    nobody looks again.
+    """
+
+    @pytest.mark.parametrize(
+        "bad_chat_id",
+        [
+            "my_trading_bot",  # a bot username, the real misconfiguration
+            "TradeFloorBot",
+            "bot",
+            "not-a-number",
+            "123abc",
+            "@x",  # too short for a channel handle
+        ],
+    )
+    def test_a_non_chat_id_is_rejected(self, bad_chat_id: str) -> None:
+        with mock.patch.dict(
+            os.environ, {tg.TOKEN_VAR: FAKE_TOKEN, tg.CHAT_VAR: bad_chat_id}, clear=False
+        ):
+            with pytest.raises(TelegramConfigError, match="NUMERIC chat id"):
+                TelegramNotifier()
+
+    @pytest.mark.parametrize(
+        "good_chat_id",
+        [
+            "5044229533",  # a personal chat
+            "-1001234567890",  # a supergroup
+            "-987654321",  # a group
+            "@a_public_channel",
+        ],
+    )
+    def test_a_real_chat_id_is_accepted(self, good_chat_id: str) -> None:
+        with mock.patch.dict(
+            os.environ, {tg.TOKEN_VAR: FAKE_TOKEN, tg.CHAT_VAR: good_chat_id}, clear=False
+        ):
+            TelegramNotifier()  # does not raise
+
+    @pytest.mark.parametrize(
+        "bad_token", ["not-a-token", "12345", "abcdef:ghijkl", "5044229533"]
+    )
+    def test_a_token_of_the_wrong_shape_is_rejected(self, bad_token: str) -> None:
+        # Pasting the chat id into the token field is the mirror mistake.
+        with mock.patch.dict(
+            os.environ, {tg.TOKEN_VAR: bad_token, tg.CHAT_VAR: FAKE_CHAT}, clear=False
+        ):
+            with pytest.raises(TelegramConfigError, match="bot token"):
+                TelegramNotifier()
+
+    def test_the_rejection_does_not_echo_the_value(self) -> None:
+        with mock.patch.dict(
+            os.environ, {tg.TOKEN_VAR: FAKE_TOKEN, tg.CHAT_VAR: "secret_bot_name"}, clear=False
+        ):
+            with pytest.raises(TelegramConfigError) as excinfo:
+                TelegramNotifier()
+        assert "secret_bot_name" not in str(excinfo.value)
