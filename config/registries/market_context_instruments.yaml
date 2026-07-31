@@ -1,0 +1,5 @@
+# Approved cross-market context instruments (§30.3.G, §30.8). Empty by
+# design: cross_market.enabled is false, and the Cross-Market Monitor tracks
+# approved contextual instruments only — approving one is a registry edit
+# under version control, ratified with its rollout step.
+context_instruments: []

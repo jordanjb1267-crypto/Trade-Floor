@@ -1,0 +1,66 @@
+# Approved external intelligence sources (§30.8). Exactly the sources the
+# firm already uses — no new vendor, no new recurring cost. Nothing here is
+# production-approved: approval is an owner action carried by an approval
+# record, and an unapproved source must not silently become
+# production-critical (§30.8).
+source_registry:
+  version: 1.0.0
+  sources:
+    - source_id: oanda_practice
+      source_type: broker
+      provider_name: OANDA US (fxTrade Practice)
+      base_url_or_connector_reference: trading_firm.execution.oanda_transport
+      assets_or_currencies: [GBP_USD, EUR_USD]
+      auth_required: true
+      polling_policy: session_scoped_read_only
+      rate_limit_policy: broker_documented_limits
+      freshness_sla_seconds: 30
+      priority: 1
+      reliability_tier: 1
+      license_or_usage_notes: >
+        Broker-native practice data under the owner's OANDA US practice
+        account (D-1). Practice host only until Phase 7.
+      production_approved: false
+      fail_closed_when_unavailable: true
+      approval_record_id: null
+      research_only: false
+
+    - source_id: fmp
+      source_type: calendar
+      provider_name: Financial Modeling Prep
+      base_url_or_connector_reference: trading_firm.surveillance.sources.fmp_calendar
+      assets_or_currencies: [USD, GBP, EUR]
+      auth_required: true
+      polling_policy: pre_session_then_event_window
+      rate_limit_policy: subscription_plan_limits
+      freshness_sla_seconds: 3600
+      priority: 2
+      reliability_tier: 2
+      license_or_usage_notes: >
+        Existing paid FMP subscription (D-7: FMP is the ratified calendar
+        source). Timestamps arrive as unmarked local times; every adapter
+        must state the source timezone explicitly (audit precedent).
+      production_approved: false
+      fail_closed_when_unavailable: true
+      approval_record_id: null
+      research_only: false
+
+    - source_id: fmp.news
+      source_type: news
+      provider_name: Financial Modeling Prep (news endpoints)
+      base_url_or_connector_reference: trading_firm.surveillance.sources.fmp_news
+      assets_or_currencies: [USD, GBP, EUR]
+      auth_required: true
+      polling_policy: disabled_until_news_domain_enabled
+      rate_limit_policy: subscription_plan_limits
+      freshness_sla_seconds: null
+      priority: 3
+      reliability_tier: 3
+      license_or_usage_notes: >
+        Same FMP subscription, news endpoints. Research-tier until the news
+        domain's rollout step; a single-source item can never exceed
+        SINGLE_SOURCE verification (§30.3).
+      production_approved: false
+      fail_closed_when_unavailable: true
+      approval_record_id: null
+      research_only: true
