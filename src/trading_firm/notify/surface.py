@@ -66,9 +66,24 @@ def redact(text: str) -> str:
 
 
 class NotificationKind(enum.StrEnum):
-    """The §19 minimum set. Named so a report cannot be sent untyped."""
+    """The §19 minimum set, plus operational additions. Named so a report
+    cannot be sent untyped.
+
+    §19 specifies a MINIMUM set, so adding a kind is permitted; adding one
+    quietly is not. `SUPERVISOR_STARTUP_HEALTH` is the one addition, and it is
+    operational rather than a trading notification: it reports that the §18
+    supervisor PROCESS reached a healthy initialisation, which is a different
+    event from `SESSION_START_HEALTH` (the London session beginning). Conflating
+    them would have made a crash-looping supervisor indistinguishable from a
+    normal trading day in the owner's chat.
+
+    Outbound kinds carry no authority — unlike `OwnerCommand`, nothing here can
+    enable, approve, or size anything, so this set needs no permissive-member
+    guard.
+    """
 
     SESSION_START_HEALTH = "session_start_health"
+    SUPERVISOR_STARTUP_HEALTH = "supervisor_startup_health"
     CANDIDATE_APPROVAL_REQUEST = "candidate_approval_request"
     ORDER_SUBMITTED = "order_submitted"
     FILL_CONFIRMATION = "fill_confirmation"
@@ -90,6 +105,52 @@ class NotificationKind(enum.StrEnum):
             NotificationKind.DATA_OR_BROKER_FAILURE,
             NotificationKind.TIER_CHANGE,
         )
+
+
+# §19's "at minimum provide" list, one member each, written out so that adding
+# an outbound kind is a deliberate act rather than an edit nobody reviews. Same
+# discipline as REGISTERED_COMMANDS below — the inbound surface is the dangerous
+# one, but a notification set that drifts silently is how an operational message
+# ends up indistinguishable from a trading one in the owner's chat.
+SPEC_MINIMUM_KINDS = frozenset(
+    {
+        "session_start_health",
+        "candidate_approval_request",
+        "order_submitted",
+        "fill_confirmation",
+        "stop_confirmation",
+        "position_closed",
+        "risk_halt",
+        "data_or_broker_failure",
+        "tier_change",
+        "daily_session_report",
+        "weekly_performance_report",
+    }
+)
+
+# Additions beyond the §19 minimum. Every member here reports on the MACHINERY
+# — that a process started, that a host is reachable — never on a position, a
+# candidate, or a size. A kind that says something about trading belongs in the
+# spec set, with the spec discussion that implies.
+OPERATIONAL_KINDS = frozenset({"supervisor_startup_health"})
+
+
+def _registered_notification_kinds() -> None:
+    """Fail at import if the outbound set drifts from its registry."""
+    declared = {member.value for member in NotificationKind}
+    registered = SPEC_MINIMUM_KINDS | OPERATIONAL_KINDS
+    added = declared - registered
+    removed = registered - declared
+    if added or removed:
+        raise RuntimeError(
+            f"NotificationKind changed (added={sorted(added)}, removed={sorted(removed)}). "
+            f"§19 specifies a MINIMUM set, so additions are allowed — but each one is "
+            f"registered explicitly. Put a spec-mandated kind in SPEC_MINIMUM_KINDS and "
+            f"an operational one in OPERATIONAL_KINDS, and say which it is in the commit."
+        )
+
+
+_registered_notification_kinds()
 
 
 def notify_owner(kind: NotificationKind, body: str) -> transport.NotifyResult:

@@ -34,6 +34,31 @@ Chief Quant & Validation recommendation with reproducible report
 immutable during live sessions; challengers live in research/replay/shadow/
 paper only (§15).
 
+## Operational readiness (§18, §19)
+
+Any live-readiness procedure — the §25 definition of done, a probation start
+(§13), or any owner activation of a live permission — **must require**:
+
+```bash
+.venv/bin/python scripts/supervisor_status.py --require-notify-confirmed
+```
+
+exiting **0**. This is a gate, not a diagnostic. It asserts two independent
+things at once: that the §18 supervisor is genuinely running (`HEALTHY` — not
+merely loaded, not hung, not crash-looping) and that the §19 notification path
+has a **confirmed delivery**.
+
+Process health and notifier health are deliberately **independent axes**.
+Installation may succeed with a degraded notifier, because a running supervisor
+is not made better by uninstalling it — but live readiness may not, because a
+risk-halt alert nobody receives is worse than no alert at all (§0.10, §19).
+
+`legacy_assumed_confirmation` **does not satisfy this gate**. That state means a
+migrated marker from an older build is suppressing a duplicate message; the old
+marker recorded a send *attempt*, never a delivery. An assumption inherited from
+an upgrade is not evidence that the owner is reachable, and it expires on a
+finite TTL so a real send produces real confirmation.
+
 ## Paper/shadow limits (§13)
 
 Paper and shadow validate process, session logic, order lifecycle, and

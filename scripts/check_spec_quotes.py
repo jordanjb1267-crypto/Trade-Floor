@@ -45,7 +45,18 @@ SKIP_PREFIXES = (
     "governance/decision-log.md",
     "reports/validation/",
 )
-SKIP_DIRS = {".git", "__pycache__", ".ruff_cache", ".pytest_cache", "dist", "node_modules"}
+SKIP_DIRS = {
+    ".git",
+    "__pycache__",
+    ".ruff_cache",
+    ".pytest_cache",
+    "dist",
+    "node_modules",
+    # Vendored dependencies are not ours to quote-check (see check_spec_refs.py).
+    ".venv",
+    "venv",
+    "site-packages",
+}
 SUFFIXES = {".py", ".md", ".yaml", ".yml"}
 
 # A quote is attributed if a §-ref sits this close to it.

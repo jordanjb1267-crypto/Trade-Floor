@@ -888,3 +888,80 @@ chat-id redaction (862 total passing). Limits stated: this validates the
 channel from the remote environment, not from the trading laptop, and no
 runtime caller is wired yet — incident/watchdog integration is future
 work. Nothing was unlocked; `live_allowed` remains empty everywhere.
+
+**2026-07-31 · §18 supervisor observability, deployment correctness, and
+notification delivery confirmation.** The §18 supervisor was installed on the
+trading laptop and reported "Installed and started" while dying on import every
+60 seconds. Three independent defects made that possible, and each is now closed
+by a mechanism rather than by care.
+
+*Deployment.* The plist resolved `/usr/bin/env python3`, but launchd runs with
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin` — `/usr/local/bin` is absent — so it
+selected the macOS system Python 3.9.6: below the §23 floor, without the
+project's dependencies, and without the TLS trust store repaired on the 3.11
+build. The plist now pins an absolute venv interpreter. `install.sh` gained
+guards for a missing venv, an uninstalled project, and a failing runtime check
+(`scripts/check_runtime.py`: Python >= 3.11 and a bare TLS handshake to the
+practice host, SNI only, no credential read or transmitted). Separately,
+`launchctl bootout` proved to be ASYNCHRONOUS: bootstrapping into a domain still
+holding the old job fails with EIO(5), which made reinstall intermittently fail
+and succeed for reasons unrelated to the change being installed. The installer
+now waits for teardown and treats a rejected bootstrap as a failure.
+
+*Observability.* `run_supervisor.py` wrote nothing on a healthy start, so the
+logs could not distinguish "running" from "hung" — only a crash produced output.
+`runner/liveness.py` adds a structured startup event written BEFORE the `.env`
+load and config validation (a record that only exists once initialisation
+succeeds cannot describe a start that never got that far), plus a heartbeat per
+sleep slice. `scripts/supervisor_status.py` resolves launchd state, heartbeat
+freshness, and startup counts into exactly four states — healthy, stale,
+stopped, crash-looping — via a pure `diagnose()`, so every transition is tested
+without launchd, a clock, or a process. The crash-loop check runs BEFORE the
+running/not-running split, because a fast-respawning job is "running" at
+whichever instant you look. `launchctl bootstrap` returning 0 means launchd
+accepted the job, not that it survived, so the installer now polls and verifies
+before claiming success.
+
+*Notification delivery.* The startup message discarded its `NotifyResult` and
+stamped a marker on ATTEMPT, recording a failed delivery as a success. The
+marker is now split in two, because it was answering two questions at once: a
+delivery marker written ONLY on confirmed delivery (governs dedup), and an
+attempt ledger written on every outcome (governs a 300s retry interval and a
+bound of 5). That split is what lets a failed delivery stay eligible for retry
+while a crash loop still cannot flood — verified against the real wiring at 60
+restarts with Telegram down: 5 sends, not 60. Both outcomes append to the events
+log. `NotificationKind` gained `SUPERVISOR_STARTUP_HEALTH`; because §19 sets a
+MINIMUM, additions are permitted but are now registered explicitly
+(`SPEC_MINIMUM_KINDS` / `OPERATIONAL_KINDS`), replacing a `len() == 11` assertion
+that would have been satisfied by deleting one kind and adding another.
+
+*Owner conditions (approved 2026-07-31).* Process health and notifier health are
+INDEPENDENT axes: `diagnose()` takes no notification argument, and a dead
+notifier never makes a running supervisor report unhealthy. Installation may
+succeed with a degraded notifier — uninstalling a genuinely running supervisor
+is the wrong remedy — but prints a prominent warning naming the consequence.
+Live readiness is stricter: `governance/strategy-promotion-policy.md` now
+requires `supervisor_status.py --require-notify-confirmed` to exit 0 for the §25
+definition of done, probation start, or any owner activation. Retry-episode
+state persists on disk across restarts and resets on confirmed success, never on
+process restart — an in-memory counter would reset on exactly the event it must
+suppress. The previous attempt-stamped marker migrates ONCE into an explicit
+`legacy_assumed_confirmation` with a finite 1-hour TTL and its own event record;
+it is never represented as a delivery and does not satisfy the readiness gate.
+
+Verification: 1041 tests passing (from 929), ruff clean, 1951 §-references
+resolve, 36 attributed quotes verified. Found and fixed during the work: the two
+§-checkers scanned the new in-tree `.venv` and failed on a vendored pygments
+lexer, so `.venv`/`venv`/`site-packages` joined `node_modules` in `SKIP_DIRS`;
+and a test fixture that patched four path constants but not a fifth wrote a
+tmp-derived assumption into the repository's real `state/ops` directory, now
+guarded by a fixture assertion that fails on any unredirected state path.
+
+Scope limits, stated rather than implied: this is process supervision and
+observability. No file under `config/` was touched, `live_allowed` appears
+nowhere in the change, and the supervisor still cannot place an order (§0 iron
+rule 1, asserted by the unchanged no-order-path acceptance test). System-level
+changes made outside the repository and NOT captured here: `certifi` installed
+into `/usr/local/bin/python3` and a `cert.pem` symlink created under the 3.11
+framework — the manual repair is documented in `deploy/macos/README.md`, and the
+installer deliberately never performs it.

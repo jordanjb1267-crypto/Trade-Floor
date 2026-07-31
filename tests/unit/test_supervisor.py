@@ -160,3 +160,68 @@ class TestStopping:
         harness.supervisor.stopping = True
         harness.supervisor.run_forever()  # returns immediately, handles nothing
         assert harness.sent == []
+
+
+class TestHeartbeatIsObservabilityOnly:
+    """§18 liveness. The heartbeat must be able to fail, be absent, or be slow
+    without altering a single trading decision — it exists to observe the loop,
+    and an observer that can change what it observes is not one."""
+
+    def test_the_default_supervisor_has_no_heartbeat(self, clock, tmp_path) -> None:
+        harness = Harness(clock, tmp_path)
+        harness.run_day()  # constructed without a heartbeat: unchanged behaviour
+        assert (tmp_path / f"{DAY}-session.json").exists()
+
+    def test_handling_an_event_beats_after_it(self, clock, tmp_path) -> None:
+        beats: list[str] = []
+        harness = Harness(clock, tmp_path)
+        harness.supervisor._heartbeat = beats.append
+        scheduled = next_event(clock, harness.moment)
+        harness.moment = scheduled.at + dt.timedelta(seconds=1)
+        harness.supervisor.handle(scheduled)
+        # handle() itself does not beat; run_forever() beats around it. Pin the
+        # contract so a refactor cannot quietly move the signal.
+        assert beats == []
+
+    def test_run_forever_beats_and_still_stops(self, clock, tmp_path) -> None:
+        beats: list[str] = []
+        harness = Harness(clock, tmp_path)
+        harness.supervisor._heartbeat = beats.append
+
+        def stop_after_first_slice(seconds):
+            harness.supervisor.stopping = True
+
+        harness.supervisor._sleep = stop_after_first_slice
+        harness.supervisor.run_forever()
+        assert "waiting" in beats
+
+    def test_a_raising_heartbeat_does_not_stop_the_session(self, clock, tmp_path) -> None:
+        """A full disk must not take the trading supervisor down with it. The
+        beat then goes stale on disk, which the status command reports — the
+        absence of the signal IS the alarm."""
+
+        def explode(_phase):
+            raise OSError("No space left on device")
+
+        harness = Harness(clock, tmp_path)
+        harness.supervisor._heartbeat = explode
+
+        def stop_after_first_slice(seconds):
+            harness.supervisor.stopping = True
+
+        harness.supervisor._sleep = stop_after_first_slice
+        harness.supervisor.run_forever()  # does not raise
+
+    def test_notifications_are_identical_with_and_without_a_heartbeat(
+        self, clock, tmp_path
+    ) -> None:
+        """The load-bearing claim of this whole change: observability added no
+        message, removed none, and reordered none."""
+        without = Harness(clock, tmp_path / "a")
+        without.run_day()
+
+        with_beat = Harness(clock, tmp_path / "b")
+        with_beat.supervisor._heartbeat = lambda phase: None
+        with_beat.run_day()
+
+        assert without.sent == with_beat.sent

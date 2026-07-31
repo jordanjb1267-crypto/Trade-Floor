@@ -39,7 +39,20 @@ SKIP_PREFIXES = (
     "governance/decision-log.md",
     "reports/validation/",
 )
-SKIP_DIRS = {".git", "__pycache__", ".ruff_cache", ".pytest_cache", "dist", "node_modules"}
+SKIP_DIRS = {
+    ".git",
+    "__pycache__",
+    ".ruff_cache",
+    ".pytest_cache",
+    "dist",
+    "node_modules",
+    # Vendored dependencies are not ours to cite-check: a third-party file whose
+    # docstring happens to use the section sign is not a stale reference to this
+    # firm's spec (pygments ships one such lexer).
+    ".venv",
+    "venv",
+    "site-packages",
+}
 SUFFIXES = {".py", ".md", ".yaml", ".yml", ".json", ".sql", ".toml", ".example", ".gitignore"}
 
 REF = re.compile(r"§(\d+)(?:\.(\d+))?")

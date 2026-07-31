@@ -20,8 +20,14 @@
          so the machine sleeps normally whenever the supervisor is stopped;
          no pmset/system-wide change is required or made. -->
     <string>-i</string>
-    <string>/usr/bin/env</string>
-    <string>python3</string>
+    <!-- Absolute interpreter path, DELIBERATELY NOT `/usr/bin/env python3`.
+         launchd runs with PATH=/usr/bin:/bin:/usr/sbin:/sbin — /usr/local/bin
+         is absent — so `env python3` resolves to the macOS system Python
+         (3.9.6), below the >=3.11 floor (§23) and without the project's
+         dependencies or a configured TLS trust store. The failure is silent
+         at install time and only surfaces as a 60-second crash loop. Pinning
+         the venv interpreter makes the resolution independent of PATH. -->
+    <string>__REPO_PATH__/.venv/bin/python</string>
     <string>scripts/run_supervisor.py</string>
   </array>
 

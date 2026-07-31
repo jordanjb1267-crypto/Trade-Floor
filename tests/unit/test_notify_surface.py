@@ -182,7 +182,26 @@ class TestRedaction:
 class TestNotificationKinds:
     def test_the_nineteen_minimum_set_is_covered(self) -> None:
         # §19's "at minimum provide" list, one member each.
-        assert len(NotificationKind) == 11
+        assert len(surface.SPEC_MINIMUM_KINDS) == 11
+        assert surface.SPEC_MINIMUM_KINDS <= {member.value for member in NotificationKind}
+
+    def test_every_kind_is_registered_as_spec_or_operational(self) -> None:
+        """Replaces a bare `len() == 11`, which could be satisfied by deleting
+        one kind and adding another. The registry says which is which, so an
+        operational message can never be passed off as a §19 requirement."""
+        declared = {member.value for member in NotificationKind}
+        assert declared == surface.SPEC_MINIMUM_KINDS | surface.OPERATIONAL_KINDS
+        assert not (surface.SPEC_MINIMUM_KINDS & surface.OPERATIONAL_KINDS)
+
+    def test_the_supervisor_startup_kind_is_operational_not_spec(self) -> None:
+        value = NotificationKind.SUPERVISOR_STARTUP_HEALTH.value
+        assert value in surface.OPERATIONAL_KINDS
+        assert value not in surface.SPEC_MINIMUM_KINDS
+
+    def test_the_startup_kind_is_not_an_alert(self) -> None:
+        """A process starting is routine. Marking it an alert would train the
+        owner to ignore the channel that carries RISK_HALT."""
+        assert not NotificationKind.SUPERVISOR_STARTUP_HEALTH.is_alert
 
     def test_alerts_are_marked(self) -> None:
         assert NotificationKind.RISK_HALT.is_alert

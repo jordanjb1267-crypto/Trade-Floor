@@ -42,6 +42,10 @@ Notify = Callable[[NotificationKind, str], bool]
 Probe = Callable[[], "HealthReport"]
 Sleep = Callable[[float], None]
 Now = Callable[[], dt.datetime]
+# Advisory liveness ping, called with a phase label. Injected like everything
+# else with a side effect; the default is None, so the trading loop is byte-for
+# -byte the same sequence with or without observability attached.
+Beat = Callable[[str], None]
 
 # Sleep in bounded slices and recompute the target each wake. A laptop that
 # slept through a DST transition, an NTP step, or a lid-close would otherwise
@@ -94,6 +98,7 @@ class Supervisor:
         report_dir: Path,
         now: Now,
         sleep: Sleep,
+        heartbeat: Beat | None = None,
     ) -> None:
         self._clock = clock
         self._probe = probe
@@ -101,8 +106,26 @@ class Supervisor:
         self._report_dir = report_dir
         self._now = now
         self._sleep = sleep
+        self._heartbeat = heartbeat
         self._record: SessionRecord | None = None
         self.stopping = False
+
+    # -------------------------------------------------------------- liveness
+
+    def _beat(self, phase: str) -> None:
+        """Advisory liveness ping (§18 posture, same as the notifier).
+
+        A failing heartbeat must never stop the loop it exists to observe, and
+        swallowing the error is not hiding it: the heartbeat then goes stale on
+        disk, and `liveness.diagnose()` reports STALE. The absence of a beat is
+        itself the alarm, so there is nothing to re-raise.
+        """
+        if self._heartbeat is None:
+            return
+        try:
+            self._heartbeat(phase)
+        except Exception:  # noqa: BLE001, S110 — see docstring
+            pass
 
     # ------------------------------------------------------------------ probe
 
@@ -216,10 +239,15 @@ class Supervisor:
         absorbed within five minutes instead of compounding."""
         while not self.stopping:
             scheduled = next_event(self._clock, self._now())
+            self._beat("waiting")
             while not self.stopping:
                 remaining = scheduled.seconds_until(self._now())
                 if remaining <= 0:
                     break
                 self._sleep(min(remaining, MAX_SLEEP_SLICE_SECONDS))
+                # One beat per slice, so a stalled loop is visible within a
+                # slice rather than at the next session boundary hours away.
+                self._beat("waiting")
             if not self.stopping:
                 self.handle(scheduled)
+                self._beat("handled")
