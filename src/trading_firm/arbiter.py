@@ -117,6 +117,14 @@ class ArbiterDecision:
     reasons: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        # §0.11: a frozen audit record must not hold a live mutable sequence.
+        # The dataclass annotation says tuple, but a plain frozen dataclass does
+        # no coercion, so a caller passing a list kept a handle it could clear
+        # afterwards — emptying `reasons` on a record whose whole purpose is to
+        # explain itself, and defeating the non-empty check three lines below.
+        object.__setattr__(self, "reasons", tuple(self.reasons))
+        object.__setattr__(self, "unresolved", tuple(self.unresolved))
+
         if not self.reasons:
             raise ValueError(
                 "an arbitration with no stated reason cannot be reviewed: the Arbiter must "
@@ -187,6 +195,21 @@ class ArbiterDecision:
     @property
     def max_edge_tier(self) -> int:
         """Tier ceiling the deterministic risk gate may consider (§5.2, §6.8).
+
+        **This is the authoritative number. `self.selected.max_edge_tier` is
+        not.** `selected` is the trader's own thesis, carrying the class it
+        *claimed*; this record carries the class that survived the deterministic
+        ceiling and arbitration. On a thin analog sample with both traders
+        claiming E5, this property returns 0 while `selected.max_edge_tier`
+        returns 4 — a consumer reaching through the record to the thesis gets
+        the unclamped self-assessment and an EXCEPTIONAL ceiling for evidence
+        that supports no live tier at all.
+
+        The thesis is still exposed because the trade plan lives on it, so the
+        hazard is closed downstream rather than by hiding it: `Candidate`
+        carries `thesis_ceiling`, which is populated from HERE, and
+        `risk/engine.py` reads only that. `test_the_unclamped_thesis_is_never_
+        the_authoritative_number` pins the divergence so it stays visible.
 
         Mirrors `Classification.max_edge_tier` rather than reusing it, because
         the arbitrated class may sit *below* the selected trader's own and the

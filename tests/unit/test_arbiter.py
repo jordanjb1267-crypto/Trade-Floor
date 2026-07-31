@@ -598,14 +598,33 @@ FIRM_STATES = {
 class TestPressureInvariance:
     """A-2 / §5.1: arbitration is a function of the market half of the packet."""
 
-    def test_arbitration_is_identical_across_firm_states(self, policy) -> None:
+    def test_the_firm_state_loop_was_theatre_and_is_documented_as_such(self) -> None:
+        """Why there is no behavioural invariance test here.
+
+        This class used to loop over five FIRM_STATES, build a
+        MarketStatePacket for each, and assert `decide(..., packet.market)`
+        matched a baseline. It could not fail: `packet.market` returns the very
+        object it was constructed with, so all five iterations were the
+        identical call with the identical argument. The firm state was
+        constructed, never passed, and never consulted.
+
+        The honest position is that arbitration CANNOT vary with firm state,
+        because no signature here accepts it — so the meaningful check is
+        structural, not behavioural, and lives in `tests/a2_guard.py`. A
+        behavioural loop over an argument the function does not take reads as
+        evidence while providing none, which is worse than no test at all.
+
+        This test pins the fact that made the old one vacuous, so anyone
+        tempted to reinstate the loop finds out why it was removed.
+        """
         snapshot = market()
-        baseline = decide(thesis("alpha"), thesis("beta"), policy, snapshot)
-        for label, firm in FIRM_STATES.items():
+        for firm in FIRM_STATES.values():
             packet = MarketStatePacket(market=snapshot, firm=firm)
-            result = decide(thesis("alpha"), thesis("beta"), policy, packet.market)
-            assert result == baseline, f"arbitration moved under firm state: {label}"
-            assert result.max_edge_tier == baseline.max_edge_tier, label
+            assert packet.market is snapshot, (
+                "packet.market returns the object it was built with; a loop over firm "
+                "states comparing decide(..., packet.market) to a baseline compares a "
+                "call to itself"
+            )
 
     def test_arbiter_signatures_admit_no_firm_state(self) -> None:
         for fn in (arbitrate, compare):
@@ -814,3 +833,72 @@ class TestAgreementCannotBeAsserted:
         b = thesis("beta", selected_features=[feature("session_features_v1.compression_ratio")])
         led = ledger_of(a, b)
         assert _agreement_between(a, b) == led.agreement()
+
+
+class TestTheRecordIsAuthoritativeNotTheThesis:
+    """The record clamps; the thesis it carries does not.
+
+    A consumer reaching through `decision.selected` for `max_edge_tier` gets the
+    trader's unclamped self-assessment. That is a real divergence, not a
+    theoretical one, so it is pinned here rather than left to be discovered.
+    """
+
+    def test_the_unclamped_thesis_is_never_the_authoritative_number(self, policy) -> None:
+        thin = market(analog_sample_size=2)  # deterministic ceiling E2
+        a = thesis("alpha", evidence_class=EvidenceClass.E5)
+        b = thesis("beta", evidence_class=EvidenceClass.E5)
+        decision = decide(a, b, policy, thin)
+
+        assert decision.arbitrated is EvidenceClass.E2
+        assert decision.max_edge_tier == 0, "E2 authorizes no live tier (§5.2)"
+
+        assert decision.selected is not None
+        assert decision.selected.evidence_class is EvidenceClass.E5
+        assert decision.selected.max_edge_tier == 4, (
+            "the thesis still reports its own claim — which is exactly why the record, "
+            "not the thesis, is what the risk gate must be fed"
+        )
+
+    def test_the_risk_gate_is_fed_the_record(self, policy) -> None:
+        """End-to-end: the clamped number is what reaches sizing (A-2, §25)."""
+        from trading_firm.models import EdgeTier
+
+        thin = market(analog_sample_size=2)
+        decision = decide(
+            thesis("alpha", evidence_class=EvidenceClass.E5),
+            thesis("beta", evidence_class=EvidenceClass.E5),
+            policy,
+            thin,
+        )
+        ceiling = EdgeTier(decision.max_edge_tier)
+        assert ceiling is EdgeTier.NONE, (
+            "a Candidate built from this arbitration carries thesis_ceiling=NONE, so "
+            "risk/engine.py rejects it however persuasive the theses were"
+        )
+
+
+class TestTheAuditRecordIsImmutable:
+    """§0.11: a frozen record holding a live list is not frozen."""
+
+    def test_reasons_supplied_as_a_list_cannot_be_emptied_later(self) -> None:
+        supplied = ["declined: both theses rest on one feature"]
+        decision = ArbiterDecision.no_trade(market_id="m", reasons=supplied)
+        supplied.clear()
+        assert decision.reasons == ("declined: both theses rest on one feature",)
+        with pytest.raises((AttributeError, TypeError)):
+            decision.reasons.append("invented afterwards")
+
+    def test_unresolved_is_coerced_too(self) -> None:
+        supplied = ["direction"]
+        decision = ArbiterDecision(
+            market_id="m",
+            selected=None,
+            arbitrated=EvidenceClass.E0,
+            alpha_evidence=EvidenceClass.E0,
+            beta_evidence=EvidenceClass.E0,
+            materially_independent=False,
+            unresolved=supplied,
+            reasons=["opposed directions"],
+        )
+        supplied.clear()
+        assert decision.unresolved == ("direction",)

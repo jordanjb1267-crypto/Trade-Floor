@@ -77,7 +77,7 @@ import enum
 from dataclasses import dataclass
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # §12.4 does not fix a significance level; 0.05 is the conventional default the
 # ledger corrects FROM. Every public method takes an override so a stricter
@@ -233,6 +233,25 @@ class Experiment(_Strict):
     report_reference: str | None = None
     provenance: str | None = None  # governance record proving prior registration
     notes: tuple[str, ...] = ()
+
+
+    @field_validator("p_value", mode="before")
+    @classmethod
+    def _p_value_is_not_a_float(cls, value: object) -> object:
+        """§12.4: a p-value is compared exactly against a BH critical value.
+
+        Pydantic coerces a float to Decimal silently, so `p_value=0.1 + 0.2`
+        stored Decimal('0.30000000000000004'). A caller computing p in float and
+        landing on a critical value can be ruled non-significant by 1e-17 while
+        the true value clears — a difference no reviewer would ever see.
+        """
+        if isinstance(value, float):
+            raise ValueError(
+                f"p_value was supplied as the float {value!r}: pass a Decimal or a string. "
+                f"A p-value is compared exactly against a critical value, and binary "
+                f"floating-point noise decides significance at the boundary (§12.4)"
+            )
+        return value
 
     @model_validator(mode="after")
     def _timestamps_aware(self) -> Experiment:

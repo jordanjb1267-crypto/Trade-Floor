@@ -1123,3 +1123,34 @@ class TestConfirmationRequiresPreRegistration:
             tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.03"),
         )
         assert e.registration is Registration.POST_HOC
+
+
+class TestExactArithmetic:
+    def test_a_float_p_value_is_refused(self) -> None:
+        # 0.1 + 0.2 stores as Decimal('0.30000000000000004'); at a BH boundary
+        # that decides significance by 1e-17.
+        with pytest.raises(ValidationError, match="supplied as the float"):
+            Experiment(
+                hypothesis_id="h",
+                description="d",
+                sample_id=GBP_SAMPLE_ID,
+                metric="profit_factor",
+                registration=Registration.POST_HOC,
+                outcome=ExperimentOutcome.SUPPORTED,
+                tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC),
+                p_value=0.1 + 0.2,
+            )
+
+    def test_a_string_or_decimal_p_value_is_exact(self) -> None:
+        e = Experiment(
+            hypothesis_id="h",
+            description="d",
+            sample_id=GBP_SAMPLE_ID,
+            metric="profit_factor",
+            registration=Registration.POST_HOC,
+            registered_at=dt.datetime(2026, 7, 20, tzinfo=UTC),
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC),
+            p_value="0.3",
+        )
+        assert e.p_value == Decimal("0.3")

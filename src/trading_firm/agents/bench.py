@@ -6,8 +6,12 @@ Two workstreams that share one governing idea, so they share one module.
 session either produced a london_breakout, an asian_range_sweep_reversal, or a
 london_continuation candidate, or it produced nothing. v2 §1 makes the firm
 market-opportunity driven, and §6.3 demotes those three from mandate to bench —
-"experts but no longer define the firm's boundaries", with "no trade quota and
-no automatic capital allocation". The operating rule is four bullets:
+"experts but no longer define the firm's boundaries". §1 is where the firm says
+they receive "no trade quota and no automatic capital allocation" — quoted from
+§1 rather than §6.3, because an auditor following a citation during an incident
+must find the sentence where the code says it is. `check_spec_refs.py` verifies
+that §6.3 resolves to a real heading; it cannot verify that §6.3 says this.
+The operating rule is four bullets:
 
 1. a specialist may support, reject, or qualify a senior-trader thesis;
 2. a specialist may not force the firm to trade its playbook;
@@ -316,7 +320,7 @@ def assess_relevance(domain: SpecialistDomain, market: MarketSnapshot) -> Releva
 
 
 def relevant_specialists(market: MarketSnapshot) -> tuple[str, ...]:
-    """The bench members §6.3 says are "consulted by default" in this state.
+    """The bench members §1 says are "consulted by default" in this state.
 
     Everyone else may still be consulted; they are simply expected to abstain.
     """
@@ -464,6 +468,10 @@ class ConsultationRound:
     records: tuple[RecordedConsultation, ...]
 
     def __post_init__(self) -> None:
+        # §0.11: coerce before the duplicate-specialist and thesis-binding
+        # checks below, so a caller cannot pass a list, pass the checks, and
+        # then append a second consultation from the same specialist.
+        object.__setattr__(self, "records", tuple(self.records))
         seen: set[str] = set()
         for record in self.records:
             sid = record.specialist_id
