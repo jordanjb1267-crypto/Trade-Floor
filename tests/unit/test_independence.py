@@ -230,3 +230,50 @@ class TestAgreementQuality:
             NOW,
         )
         assert ledger.agreement().independent_agreement is False
+
+
+class TestIndependenceRequiresBothSides:
+    """§6.2 rule 7 / §6.1: found by mutation — changing `and` to `or` in
+    `materially_independent` survived the entire 837-test suite.
+
+    That is not cosmetic. `Agreement.materially_independent` is the only gate
+    between E4 and E5 in the Arbiter, so under `or` a thesis whose evidence is a
+    strict SUBSET of the other's would count as independent corroboration and
+    unlock Exceptional — precisely the "averaging two weak theses into one
+    apparently strong thesis" §6.1 forbids.
+    """
+
+    def test_a_subset_thesis_is_not_independent_corroboration(self, ledger) -> None:
+        # Alpha cites two features; Beta cites one of Alpha's and nothing else.
+        # Beta has contributed no evidence Alpha did not already have.
+        ledger.submit(
+            thesis("alpha", selected_features=[feature(WIDTH), feature(COMPRESSION, "0.4")]),
+            PACKET, NOW,
+        )
+        ledger.submit(thesis("beta", selected_features=[feature(WIDTH)]), PACKET, NOW)
+
+        agreement = ledger.agreement()
+        assert agreement.same_direction is True
+        assert agreement.alpha_only == (COMPRESSION,)
+        assert agreement.beta_only == ()
+        assert agreement.materially_independent is False, (
+            "Beta added nothing Alpha did not already hold; that is one thesis "
+            "counted twice, not two agreeing traders"
+        )
+        assert agreement.independent_agreement is False
+
+    def test_the_mirror_case_is_also_not_independent(self, ledger) -> None:
+        ledger.submit(thesis("alpha", selected_features=[feature(WIDTH)]), PACKET, NOW)
+        ledger.submit(
+            thesis("beta", selected_features=[feature(WIDTH), feature(COMPRESSION, "0.4")]),
+            PACKET, NOW,
+        )
+        assert ledger.agreement().materially_independent is False
+
+    def test_both_contributing_is_independent(self, ledger) -> None:
+        # The control: without it, a rule that always returned False would pass.
+        ledger.submit(thesis("alpha", selected_features=[feature(WIDTH)]), PACKET, NOW)
+        ledger.submit(
+            thesis("beta", selected_features=[feature(COMPRESSION, "0.4")]), PACKET, NOW
+        )
+        assert ledger.agreement().materially_independent is True

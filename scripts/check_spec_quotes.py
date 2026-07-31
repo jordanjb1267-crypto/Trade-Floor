@@ -27,8 +27,11 @@ Usage:
 
 from __future__ import annotations
 
+import ast
+import io
 import re
 import sys
+import tokenize
 import unicodedata
 from pathlib import Path
 
@@ -112,30 +115,49 @@ def prose_lines(path: Path, text: str) -> set[int]:
     """Line numbers carrying PROSE, not code.
 
     The first version of this checker scanned every line and produced 391 false
-    positives — Python error messages, f-string fragments, and docstring
-    fragments all look like quotations to a regex. A checker that cries wolf 391
-    times is worse than no checker, because the next real finding is scrolled
-    past. Only a citation a human wrote in prose can be a misattribution, so
-    only prose is examined: all of a markdown file, and comments plus docstrings
-    in Python.
+    positives — Python error messages and f-string fragments all look like
+    quotations to a regex. A checker that cries wolf 391 times is worse than no
+    checker, because the next real finding is scrolled past.
+
+    The second version counted triple-quote characters to find docstrings, and
+    a single unbalanced count left `in_doc` stuck True for the rest of the file,
+    so every assertion message after it was scanned as prose. It flagged one
+    immediately. Counting delimiters is a parser, and writing a bad parser by
+    accident is how the first two attempts here failed.
+
+    So the docstring ranges come from the AST and the comments from `tokenize`,
+    both of which already know exactly where they are.
     """
     if path.suffix in {".md", ".yaml", ".yml"}:
         return set(range(1, len(text.splitlines()) + 1))
 
-    lines = text.splitlines()
     prose: set[int] = set()
-    in_doc = False
-    for i, line in enumerate(lines, 1):
-        if line.strip().startswith("#"):
-            prose.add(i)
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return prose
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             continue
-        ticks = line.count(TRIPLE_DQ) + line.count(TRIPLE_SQ)
-        if in_doc:
-            prose.add(i)
-        if ticks % 2 == 1:
-            if not in_doc:
-                prose.add(i)
-            in_doc = not in_doc
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            prose.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type == tokenize.COMMENT:
+                prose.add(token.start[0])
+    except (tokenize.TokenError, IndentationError):
+        pass
+
     return prose
 
 

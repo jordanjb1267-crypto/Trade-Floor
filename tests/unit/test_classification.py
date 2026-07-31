@@ -327,3 +327,43 @@ def test_module_is_pressure_blind_under_the_shared_guard() -> None:
     from a2_guard import assert_pressure_blind
 
     assert_pressure_blind(importlib.import_module("trading_firm.classification"))
+
+
+class TestCeilingBoundaries:
+    """Exact boundaries, found by mutation: `>` -> `>=` and `<` -> `<=` both
+    survived the whole 837-test suite, so neither limit was pinned anywhere.
+
+    Both directions matter. Capping one pip early is a silent, permanent
+    down-bias on every tier the firm can reach — the invisible under-sizing A-2
+    exists to make visible — and capping one pip late admits a spread §5.3
+    excludes.
+    """
+
+    def test_a_spread_exactly_at_the_limit_is_within_limits(self, policy) -> None:
+        # §5.3 says spread must be "within limits". At the limit is within it.
+        at_limit = market(spread_pips=policy.max_spread_pips)
+        ceiling, _ = evidence_ceiling(at_limit, policy)
+        assert ceiling is EvidenceClass.E5, (
+            "a spread exactly at the configured limit is inside it; capping here "
+            "under-classifies every session that lands on the boundary"
+        )
+
+    def test_a_spread_one_step_above_the_limit_caps(self, policy) -> None:
+        over = market(spread_pips=policy.max_spread_pips + Decimal("0.01"))
+        ceiling, _ = evidence_ceiling(over, policy)
+        assert ceiling is EvidenceClass.E3
+
+    def test_an_analog_sample_exactly_at_the_minimum_is_sufficient(self, policy) -> None:
+        # §12.6 states a MINIMUM sample. Meeting the minimum satisfies it.
+        exact = market(analog_sample_size=policy.required_analog_sample_size)
+        ceiling, _ = evidence_ceiling(exact, policy)
+        assert ceiling is EvidenceClass.E5, (
+            "requiring one more than the ratified minimum silently raises the §12.6 "
+            "threshold this firm ratified"
+        )
+
+    def test_one_below_the_minimum_caps(self, policy) -> None:
+        short = market(analog_sample_size=policy.required_analog_sample_size - 1)
+        ceiling, reasons = evidence_ceiling(short, policy)
+        assert ceiling is EvidenceClass.E2
+        assert any("analog sample" in r for r in reasons)
