@@ -158,6 +158,24 @@ class ArbiterDecision:
                 f"opposing trader's agreement (§6.1, §6.2)"
             )
 
+        # The checks above compare three caller-supplied values against each
+        # other, which an adversarial review pointed out is mutual consistency,
+        # not soundness: a caller could hand in a thesis claiming E2 alongside
+        # alpha_evidence=E5 and construct an "arbitrated E5" record that no
+        # evidence supports. The effective class is min(claimed, ceiling) by
+        # construction in classification.py, so it can never EXCEED what the
+        # thesis itself claimed — anchoring the record to the one value the
+        # caller did not invent.
+        claimed = self.selected.evidence_class
+        if _EVIDENCE_RANK[own] > _EVIDENCE_RANK[claimed]:
+            raise ValueError(
+                f"{trader}'s effective evidence {own.value} exceeds what its thesis "
+                f"actually claimed ({claimed.value}): an effective class is the claim after "
+                f"the deterministic ceiling has clamped it, so it cannot be higher than the "
+                f"claim. This record was assembled from values that do not describe the "
+                f"thesis it carries (§5.2, §0.11)"
+            )
+
     @property
     def is_no_trade(self) -> bool:
         return self.selected is None
@@ -281,6 +299,23 @@ def _selection_key(
     )
 
 
+def _agreement_between(alpha_thesis: AdaptiveThesis, beta_thesis: AdaptiveThesis) -> Agreement:
+    """Agreement recomputed from the theses (§6.2 rule 7).
+
+    Deliberately duplicates `IndependenceLedger.agreement()`'s rule rather than
+    calling it, because `compare()` may be reached without a ledger. A test
+    asserts the two agree on the same inputs, so the duplication cannot drift.
+    """
+    a_features = {f.feature_id for f in alpha_thesis.selected_features}
+    b_features = {f.feature_id for f in beta_thesis.selected_features}
+    return Agreement(
+        same_direction=alpha_thesis.direction == beta_thesis.direction,
+        shared_features=tuple(sorted(a_features & b_features)),
+        alpha_only=tuple(sorted(a_features - b_features)),
+        beta_only=tuple(sorted(b_features - a_features)),
+    )
+
+
 def compare(
     alpha_thesis: AdaptiveThesis,
     alpha: Classification,
@@ -305,6 +340,27 @@ def compare(
             f"{beta.market_id}: both senior traders must receive the exact same packet "
             f"checksum, so these two theses are not comparable (§6A, §0.10)"
         )
+
+    # §6.2 rule 7: the Agreement is the ONLY gate between E4 and E5, so a
+    # caller-supplied one is a caller-supplied Exceptional. An adversarial
+    # review passed a mismatched Agreement claiming disjoint features for two
+    # theses resting on the identical feature and moved the arbitrated class
+    # from E4 to E5. Recomputed here from the theses this function already
+    # holds; a supplied Agreement that disagrees is a bug, not a preference.
+    derived = _agreement_between(alpha_thesis, beta_thesis)
+    if (
+        agreement.materially_independent != derived.materially_independent
+        or agreement.same_direction != derived.same_direction
+    ):
+        raise ValueError(
+            f"the supplied Agreement claims materially_independent="
+            f"{agreement.materially_independent}, same_direction={agreement.same_direction}, "
+            f"but the two theses give {derived.materially_independent} and "
+            f"{derived.same_direction}. Agreement earns value only from materially "
+            f"independent evidence, and that is a property of the theses, not an "
+            f"assertion about them (§6.2 rule 7, §6.1)"
+        )
+    agreement = derived
 
     market_id = alpha.market_id
     unresolved = _unresolved(alpha_thesis, alpha, beta_thesis, beta)

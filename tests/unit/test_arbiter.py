@@ -34,7 +34,7 @@ from trading_firm.adaptive import (
 )
 from trading_firm.arbiter import ArbiterDecision, arbitrate, compare
 from trading_firm.classification import classify
-from trading_firm.independence import IndependenceLedger
+from trading_firm.independence import Agreement, IndependenceLedger
 from trading_firm.models import DrawdownState
 from trading_firm.packet import FirmSnapshot, MarketSnapshot, MarketStatePacket
 from trading_firm.policy import load_adaptive_policy
@@ -729,3 +729,88 @@ class TestArbitratedEvidenceIsThePacketTheTradersAnalysed:
         assert led.packet_id == packet.packet_id
         assert led.market_id == packet.market_id
         led.verify_market(snapshot)  # does not raise
+
+
+class TestTheRecordIsAnchoredToTheThesisItCarries:
+    """§5.2/§0.11: mutual consistency of caller-supplied values is not soundness.
+
+    The module claimed an inflated decision was "unrepresentable even for a
+    caller that hand-builds one". A reviewer disproved it: alpha_evidence,
+    beta_evidence and arbitrated are all supplied by the same caller, so they
+    can agree with each other while describing no thesis that exists.
+    """
+
+    def test_an_effective_class_above_the_thesis_claim_is_refused(self, policy) -> None:
+        modest = thesis("alpha", evidence_class=EvidenceClass.E2)
+        with pytest.raises(ValueError, match="exceeds what its thesis actually claimed"):
+            ArbiterDecision(
+                market_id="m",
+                selected=modest,
+                arbitrated=EvidenceClass.E5,
+                alpha_evidence=EvidenceClass.E5,
+                beta_evidence=EvidenceClass.E5,
+                materially_independent=True,
+                unresolved=(),
+                reasons=("looks fine",),
+            )
+
+    def test_a_clamped_effective_class_is_still_legal(self, policy) -> None:
+        # Effective BELOW the claim is the normal case: the ceiling clamped it.
+        claimed_high = thesis("alpha", evidence_class=EvidenceClass.E5)
+        decision = ArbiterDecision(
+            market_id="m",
+            selected=claimed_high,
+            arbitrated=EvidenceClass.E2,
+            alpha_evidence=EvidenceClass.E2,
+            beta_evidence=EvidenceClass.E2,
+            materially_independent=False,
+            unresolved=(),
+            reasons=("thin analog sample capped both at E2",),
+        )
+        assert decision.arbitrated is EvidenceClass.E2
+
+
+class TestAgreementCannotBeAsserted:
+    """§6.2 rule 7: agreement is a property of the theses, not a claim about them."""
+
+    def test_a_mismatched_agreement_is_refused(self, policy) -> None:
+        # Two theses on the IDENTICAL feature — genuinely duplicated evidence —
+        # with an Agreement claiming they were disjoint. That lie was the only
+        # gate between E4 and E5.
+        shared = "session_features_v1.asian_width_pips"
+        a = thesis("alpha", selected_features=[feature(shared)])
+        b = thesis("beta", selected_features=[feature(shared)])
+        snapshot = market()
+        lie = Agreement(
+            same_direction=True,
+            shared_features=(),
+            alpha_only=("session_features_v1.compression_ratio",),
+            beta_only=("session_features_v1.asian_high",),
+        )
+        with pytest.raises(ValueError, match="not an assertion about them|property of the theses"):
+            compare(a, classify(a, snapshot, policy), b, classify(b, snapshot, policy), lie)
+
+    def test_an_honest_agreement_is_accepted(self, policy) -> None:
+        a = thesis("alpha", selected_features=[feature("session_features_v1.asian_width_pips")])
+        b = thesis("beta", selected_features=[feature("session_features_v1.compression_ratio")])
+        snapshot = market()
+        honest = Agreement(
+            same_direction=True,
+            shared_features=(),
+            alpha_only=("session_features_v1.asian_width_pips",),
+            beta_only=("session_features_v1.compression_ratio",),
+        )
+        decision = compare(
+            a, classify(a, snapshot, policy), b, classify(b, snapshot, policy), honest
+        )
+        assert decision.materially_independent is True
+
+    def test_the_derivation_matches_the_ledger_s(self, policy) -> None:
+        """The helper duplicates IndependenceLedger.agreement()'s rule so
+        compare() works without a ledger. Pinned so the two cannot drift."""
+        from trading_firm.arbiter import _agreement_between
+
+        a = thesis("alpha", selected_features=[feature("session_features_v1.asian_width_pips")])
+        b = thesis("beta", selected_features=[feature("session_features_v1.compression_ratio")])
+        led = ledger_of(a, b)
+        assert _agreement_between(a, b) == led.agreement()
