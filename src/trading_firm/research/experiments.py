@@ -177,6 +177,38 @@ class Sample(_Strict):
             )
         return self
 
+    @model_validator(mode="after")
+    def _denominator_fits_its_own_range(self) -> Sample:
+        """§12.7 requirement 6: the honest denominator must be arithmetically
+        possible.
+
+        Nothing related `sessions` to the range it describes, so
+        `Sample(first_session=2026-06-04, last_session=2026-06-05, sessions=500)`
+        was accepted — and an adversarial review found the seeded GBP exemplar
+        declaring 31 sessions over a range containing 30 weekdays. That number
+        then appeared in `publication_table()` as the denominator a §12.6
+        evidence count is judged against, so an impossible sample size was one
+        clearance away from a promotion record.
+
+        Weekdays are the ceiling: FX trades around the clock on weekdays and the
+        firm's session is a London weekday (§14). Holidays and outages only
+        reduce the count further, which is what `known_coverage_holes` records.
+        """
+        span = (self.last_session - self.first_session).days + 1
+        weekdays = sum(
+            1
+            for offset in range(span)
+            if (self.first_session + dt.timedelta(days=offset)).weekday() < 5
+        )
+        if self.sessions > weekdays:
+            raise ValueError(
+                f"sample {self.sample_id!r} claims {self.sessions} sessions but "
+                f"{self.first_session}..{self.last_session} contains only {weekdays} "
+                f"weekdays: a denominator larger than its own range overstates the "
+                f"evidence every rate in the report is divided by (§12.7, §12.6)"
+            )
+        return self
+
 
 class Experiment(_Strict):
     """One recorded test of one hypothesis against one sample (§12.4).

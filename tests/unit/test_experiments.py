@@ -58,7 +58,7 @@ def gbp_sample(role: SampleRole = SampleRole.DISCOVERY) -> Sample:
         role=role,
         first_session=dt.date(2026, 6, 4),
         last_session=dt.date(2026, 7, 15),
-        sessions=31,
+        sessions=30,
         known_coverage_holes=("feed timestamps pinned empirically to America/New_York",),
     )
 
@@ -160,7 +160,7 @@ class TestSampleRecord:
                 role=SampleRole.DISCOVERY,
                 first_session=dt.date(2026, 7, 15),
                 last_session=dt.date(2026, 6, 4),
-                sessions=31,
+                sessions=30,
             )
 
     def test_sample_records_are_frozen(self) -> None:
@@ -177,7 +177,7 @@ class TestSampleRecord:
                 role=SampleRole.DISCOVERY,
                 first_session=dt.date(2026, 6, 4),
                 last_session=dt.date(2026, 7, 15),
-                sessions=31,
+                sessions=30,
                 favourable=True,
             )
 
@@ -744,7 +744,7 @@ class TestPublicationGate:
         assert "§12.4" in table
         assert "tests recorded: 6" in table
         assert "selection events: 1" in table
-        assert "sessions capable of producing features: 31" in table
+        assert "sessions capable of producing features: 30" in table
         assert "America/New_York" in table  # disclosed coverage hole (§12.7 rule 6)
         assert "exit_logic_challenger" in table
         assert "pre_registered" in table
@@ -971,3 +971,52 @@ class TestVariantMultiplicityReachesBH:
                 p_value=Decimal("0.001"),
             )
         assert len(ledger.benjamini_hochberg(GBP_SAMPLE_ID)) == 3
+
+
+class TestHonestDenominator:
+    """§12.7 requirement 6: the denominator must be arithmetically possible.
+
+    Nothing related `sessions` to the range it described, and the seeded GBP
+    exemplar claimed 31 sessions over a range containing 30 weekdays. That
+    number reached `publication_table()` as the denominator a §12.6 evidence
+    count is judged against, so an impossible sample size sat one clearance
+    away from a promotion record.
+    """
+
+    def test_a_denominator_larger_than_its_range_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="contains only .* weekdays"):
+            Sample(
+                sample_id="impossible",
+                description="two days, five hundred sessions",
+                instrument="GBP_USD",
+                role=SampleRole.DISCOVERY,
+                first_session=dt.date(2026, 6, 4),
+                last_session=dt.date(2026, 6, 5),
+                sessions=500,
+            )
+
+    def test_the_exemplar_now_states_a_possible_denominator(self) -> None:
+        sample = gbp_sample()
+        span = (sample.last_session - sample.first_session).days + 1
+        weekdays = sum(
+            1
+            for offset in range(span)
+            if (sample.first_session + dt.timedelta(days=offset)).weekday() < 5
+        )
+        assert sample.sessions <= weekdays
+        assert weekdays == 30
+
+    def test_fewer_sessions_than_weekdays_is_fine(self) -> None:
+        # Holidays and outages only reduce the count; that is what
+        # known_coverage_holes records.
+        sample = Sample(
+            sample_id="holed",
+            description="range with a holiday",
+            instrument="GBP_USD",
+            role=SampleRole.DISCOVERY,
+            first_session=dt.date(2026, 6, 4),
+            last_session=dt.date(2026, 7, 15),
+            sessions=27,
+            known_coverage_holes=("three UK bank holidays",),
+        )
+        assert sample.sessions == 27
