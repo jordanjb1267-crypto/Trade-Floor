@@ -437,6 +437,11 @@ def arbitrate(
     first-pass reports exist — so there is no ordering for this function to
     re-check and no way for it to read one trader's reasoning early.
     """
+    # §6A: the pair must have analysed THIS market, not merely the same one as
+    # each other. Without this the independence gates all report healthy while
+    # the Arbiter re-classifies both theses against unrelated evidence.
+    ledger.verify_market(market)
+
     alpha_report, beta_report = ledger.for_arbiter()
     agreement = ledger.agreement()
 

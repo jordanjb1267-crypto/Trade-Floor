@@ -35,6 +35,7 @@ import json
 from dataclasses import dataclass, field
 
 from trading_firm.adaptive import AdaptiveThesis
+from trading_firm.packet import MarketSnapshot, MarketStatePacket
 
 TRADERS = ("alpha", "beta")
 
@@ -81,11 +82,41 @@ class IndependenceLedger:
 
     Mutable by design — it accumulates submissions — but everything it hands
     back is frozen.
+
+    Carries BOTH identities from §6A deliberately. `packet_id` binds the two
+    traders to one another: they were handed the same market *and* the same
+    firm state. `market_id` binds them to the evidence itself, and it is the
+    one a downstream consumer must check before re-deriving anything from a
+    snapshot, because a snapshot is not self-identifying — an adversarial
+    review showed the Arbiter re-classifying both locked theses against an
+    entirely unrelated `MarketSnapshot` while every §6.2 gate reported healthy.
+    Independence between the traders was never the whole requirement; §6A also
+    requires that what they analysed is what gets arbitrated.
     """
 
     packet_id: str
+    market_id: str
     _locked: dict[str, LockedReport] = field(default_factory=dict)
     _revisions: dict[str, Revision] = field(default_factory=dict)
+
+    @classmethod
+    def for_packet(cls, packet: MarketStatePacket) -> IndependenceLedger:
+        """Preferred constructor: both identities taken from one packet, so
+        they cannot be supplied inconsistently."""
+        return cls(packet_id=packet.packet_id, market_id=packet.market_id)
+
+    def verify_market(self, market: MarketSnapshot) -> None:
+        """Fail closed unless `market` is the evidence the pair locked against.
+
+        Called by anything that re-derives a classification from a snapshot
+        after the fact (§6A, §0.10).
+        """
+        if market.checksum != self.market_id:
+            raise ValueError(
+                f"market snapshot {market.checksum} is not the packet the senior traders "
+                f"analysed ({self.market_id}): both traders receiving the same packet is "
+                f"only half of §6A — what they analysed must also be what is arbitrated"
+            )
 
     @property
     def both_locked(self) -> bool:

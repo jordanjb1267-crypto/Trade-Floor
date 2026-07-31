@@ -338,7 +338,6 @@ class SpecialistConsultation(_Strict):
     """
 
     specialist_id: str = Field(min_length=1)
-    declared_domain: SpecialistDomain
     thesis_id: str = Field(min_length=1)
     verdict: SpecialistVerdict
     # Optional by default so that NOT_APPLICABLE constructs with nothing but a
@@ -346,6 +345,27 @@ class SpecialistConsultation(_Strict):
     # required to (§6.3 bullet 3).
     rationale: str = ""
     qualification: str | None = None
+
+    @model_validator(mode="after")
+    def _specialist_is_on_the_bench(self) -> SpecialistConsultation:
+        # The domain is NOT a field. An earlier version let the caller supply
+        # `declared_domain` alongside `specialist_id`, which meant a specialist
+        # chose, per answer, the domain that decides whether its answer is
+        # in-domain — and in-domain drives whether it is scored (§6.3 bullet 4)
+        # and whether its REJECT surfaces. A specialist could therefore duck
+        # accountability for a wrong call by widening its declared domain after
+        # the fact, or suppress its own rejection by narrowing it. §6.3 evaluates
+        # a specialist "only on opportunities within its declared domain", which
+        # is a claim the BENCH makes about the specialist, not one the specialist
+        # makes about itself. Looking it up here makes the two impossible to
+        # disagree.
+        bench_domain(self.specialist_id)  # raises with a §6.3 citation if unknown
+        return self
+
+    @property
+    def declared_domain(self) -> SpecialistDomain:
+        """The bench's declaration about this specialist, not its own."""
+        return bench_domain(self.specialist_id)
 
     @model_validator(mode="after")
     def _claims_are_justified_silence_is_not(self) -> SpecialistConsultation:

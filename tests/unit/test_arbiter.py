@@ -121,8 +121,11 @@ def thesis(trader: str, features: list[str] | None = None, **overrides) -> Adapt
     return AdaptiveThesis(**base)
 
 
-def ledger_of(alpha: AdaptiveThesis, beta: AdaptiveThesis) -> IndependenceLedger:
-    led = IndependenceLedger(packet_id=PACKET)
+def ledger_of(
+    alpha: AdaptiveThesis, beta: AdaptiveThesis, snapshot: MarketSnapshot | None = None
+) -> IndependenceLedger:
+    snapshot = snapshot if snapshot is not None else market()
+    led = IndependenceLedger(packet_id=PACKET, market_id=snapshot.checksum)
     led.submit(alpha, PACKET, NOW)
     led.submit(beta, PACKET, NOW)
     return led
@@ -130,14 +133,14 @@ def ledger_of(alpha: AdaptiveThesis, beta: AdaptiveThesis) -> IndependenceLedger
 
 def decide(alpha: AdaptiveThesis, beta: AdaptiveThesis, policy, snapshot=None):
     snapshot = snapshot if snapshot is not None else market()
-    return arbitrate(ledger_of(alpha, beta), snapshot, policy)
+    return arbitrate(ledger_of(alpha, beta, snapshot), snapshot, policy)
 
 
 class TestArbiterWaitsForBothLocks:
     """§6.1: the Arbiter must not see either analysis before both lock."""
 
     def test_arbitration_is_impossible_until_both_first_passes_exist(self, policy) -> None:
-        led = IndependenceLedger(packet_id=PACKET)
+        led = IndependenceLedger(packet_id=PACKET, market_id=market().checksum)
         led.submit(thesis("alpha"), PACKET, NOW)
         with pytest.raises(PermissionError, match="only after both are complete"):
             arbitrate(led, market(), policy)
@@ -147,7 +150,11 @@ class TestArbiterWaitsForBothLocks:
         # release, not some second ordering check inside the Arbiter that could
         # be relaxed independently.
         with pytest.raises(PermissionError, match=r"outstanding: \['alpha', 'beta'\]"):
-            arbitrate(IndependenceLedger(packet_id=PACKET), market(), policy)
+            arbitrate(
+                IndependenceLedger(packet_id=PACKET, market_id=market().checksum),
+                market(),
+                policy,
+            )
 
 
 class TestNoAveraging:
@@ -665,3 +672,60 @@ def test_module_is_pressure_blind_under_the_shared_guard() -> None:
     from a2_guard import assert_pressure_blind
 
     assert_pressure_blind(importlib.import_module("trading_firm.arbiter"))
+
+
+class TestArbitratedEvidenceIsThePacketTheTradersAnalysed:
+    """§6A: both traders receiving the same packet is only half the requirement.
+
+    An adversarial review showed the Arbiter re-classifying both locked theses
+    against an entirely unrelated MarketSnapshot while every §6.2 gate reported
+    healthy — independence between the traders held perfectly, and the evidence
+    being arbitrated was simply not the evidence anyone analysed.
+    """
+
+    def test_an_unrelated_snapshot_is_refused(self, policy) -> None:
+        analysed = market()
+        unrelated = market(
+            session_date=dt.date(2026, 7, 29),
+            regime="expansion",
+            bid=Decimal("1.31000"),
+            ask=Decimal("1.31014"),
+        )
+        assert unrelated.checksum != analysed.checksum
+
+        led = ledger_of(thesis("alpha"), thesis("beta"), analysed)
+        with pytest.raises(ValueError, match="not the packet the senior traders analysed"):
+            arbitrate(led, unrelated, policy)
+
+    def test_the_analysed_snapshot_is_accepted(self, policy) -> None:
+        analysed = market()
+        led = ledger_of(thesis("alpha"), thesis("beta"), analysed)
+        assert arbitrate(led, analysed, policy).market_id == analysed.checksum
+
+    def test_a_single_changed_field_is_enough_to_refuse(self, policy) -> None:
+        # The realistic version: not a wholly different day, just a snapshot
+        # rebuilt a moment later with a different spread. Re-classifying against
+        # it would silently move the evidence ceiling (§5.3 caps E3 on spread).
+        analysed = market(spread_pips=Decimal("1.2"))
+        refreshed = market(spread_pips=Decimal("1.3"))
+        led = ledger_of(thesis("alpha"), thesis("beta"), analysed)
+        with pytest.raises(ValueError, match="not the packet"):
+            arbitrate(led, refreshed, policy)
+
+    def test_for_packet_cannot_produce_inconsistent_identities(self) -> None:
+        from trading_firm.models import DrawdownState
+        from trading_firm.packet import FirmSnapshot, MarketStatePacket
+
+        snapshot = market()
+        packet = MarketStatePacket(
+            market=snapshot,
+            firm=FirmSnapshot(
+                closed_equity=Decimal("250"),
+                tier_anchor=Decimal("250"),
+                drawdown_state=DrawdownState.NORMAL,
+            ),
+        )
+        led = IndependenceLedger.for_packet(packet)
+        assert led.packet_id == packet.packet_id
+        assert led.market_id == packet.market_id
+        led.verify_market(snapshot)  # does not raise

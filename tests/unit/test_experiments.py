@@ -830,3 +830,89 @@ def test_module_is_pressure_blind_under_the_shared_guard() -> None:
     from a2_guard import assert_pressure_blind
 
     assert_pressure_blind(importlib.import_module("trading_firm.research.experiments"))
+
+
+class TestBackdatedRegistration:
+    """§12.4: a pre-registration made after the fact is not a pre-registration.
+
+    The escape an adversarial review demonstrated: a researcher who has already
+    seen p=0.002 calls register() with a date a month earlier, then
+    record_result(). Two ordinary calls, no provenance cited, and the ledger
+    reports the hypothesis as pre-registered.
+    """
+
+    def test_a_registration_behind_the_witness_clock_is_refused(self) -> None:
+        ledger = spent_gbp_ledger()
+        latest = max(
+            e.tested_at for e in ledger.experiments() if e.tested_at is not None
+        )
+        with pytest.raises(ValueError, match="not a pre-registration"):
+            ledger.register(
+                "backdated",
+                "invented after seeing the result",
+                GBP_SAMPLE_ID,
+                "profit_factor",
+                latest - dt.timedelta(days=30),
+            )
+
+    def test_a_registration_after_the_witness_clock_is_accepted(self) -> None:
+        ledger = spent_gbp_ledger()
+        latest = max(
+            e.tested_at for e in ledger.experiments() if e.tested_at is not None
+        )
+        e = ledger.register(
+            "honest", "written down first", GBP_SAMPLE_ID, "profit_factor",
+            latest + dt.timedelta(days=1),
+        )
+        assert e.registration is Registration.PRE_REGISTERED
+
+    def test_the_limit_of_the_guarantee_is_real(self) -> None:
+        """Documented honestly rather than glossed: a fresh ledger has witnessed
+        nothing, so it cannot detect backdating. Closing this needs an external
+        witness (a commit hash, a signed timestamp), which is outside this
+        module. The test exists so the limitation is visible rather than
+        discovered later by someone relying on a guarantee that isn't there."""
+        ledger = ExperimentLedger()
+        ledger.add_sample(gbp_sample())
+        e = ledger.register(
+            "unwitnessed", "nothing to check against", GBP_SAMPLE_ID, "profit_factor",
+            dt.datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        assert e.registration is Registration.PRE_REGISTERED
+
+
+class TestRegistrationClassIsImmutable:
+    def test_a_result_cannot_upgrade_a_post_hoc_registration(self) -> None:
+        """Mutating `registration=existing.registration` to PRE_REGISTERED in
+        record_result left all 65 tests green. This is the test that kills it."""
+        ledger = ExperimentLedger()
+        ledger.add_sample(gbp_sample())
+        ledger.record_post_hoc(
+            "fitted", "noticed after the fact", GBP_SAMPLE_ID, "profit_factor",
+            outcome=ExperimentOutcome.PENDING,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC),
+        )
+        updated = ledger.record_result(
+            "fitted", ExperimentOutcome.SUPPORTED,
+            dt.datetime(2026, 7, 21, tzinfo=UTC), p_value=Decimal("0.001"),
+        )
+        assert updated.registration is Registration.POST_HOC, (
+            "a result must not promote its own hypothesis to pre-registered (§12.4)"
+        )
+
+
+class TestCorrectionParametersAreFixed:
+    """A correction that can be loosened after the fact corrects nothing."""
+
+    def test_alpha_cannot_be_widened_after_construction(self) -> None:
+        ledger = spent_gbp_ledger()
+        before = ledger.required_p_value(GBP_SAMPLE_ID)
+        with pytest.raises(AttributeError):
+            ledger.alpha = Decimal("0.9")
+        assert ledger.required_p_value(GBP_SAMPLE_ID) == before
+
+    def test_the_resolution_floor_cannot_be_disabled(self) -> None:
+        ledger = spent_gbp_ledger()
+        with pytest.raises(AttributeError):
+            ledger.resolution_floor = Decimal("0")
+        assert ledger.resolution_floor > 0

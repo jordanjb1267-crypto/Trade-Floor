@@ -84,7 +84,6 @@ def consultation(
 ) -> SpecialistConsultation:
     base = dict(
         specialist_id=specialist_id,
-        declared_domain=bench_domain(specialist_id),
         thesis_id=THESIS,
         verdict=verdict,
     )
@@ -145,7 +144,6 @@ class TestConsultationValidation:
         # The §21 criterion begins here: abstention must be free to express.
         record = SpecialistConsultation(
             specialist_id=CONTINUATION,
-            declared_domain=LONDON_CONTINUATION_DOMAIN,
             thesis_id=THESIS,
             verdict=SpecialistVerdict.NOT_APPLICABLE,
         )
@@ -159,7 +157,6 @@ class TestConsultationValidation:
         with pytest.raises(ValidationError, match="no rationale"):
             SpecialistConsultation(
                 specialist_id=BREAKOUT,
-                declared_domain=LONDON_BREAKOUT_DOMAIN,
                 thesis_id=THESIS,
                 verdict=verdict,
             )

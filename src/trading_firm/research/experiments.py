@@ -318,8 +318,13 @@ class ExperimentLedger:
                 f"{alpha}: a floor at or above alpha would mark a sample exhausted before its "
                 f"first test (§12.4)"
             )
-        self.alpha = alpha
-        self.resolution_floor = resolution_floor
+        # Read-only for the same reason publication_cleared is: a correction
+        # that can be loosened after the fact corrects nothing. `alpha = 0.9`
+        # after six spent tests produced a "corrected" threshold looser than the
+        # uncorrected one, and `resolution_floor = 0` permanently disabled the
+        # exhaustion branch — both with a single assignment and no error.
+        self._alpha_level = alpha
+        self._resolution_floor = resolution_floor
         # §12.7 / A-1: defaults False and is never set True by library code.
         # Held privately behind read-only properties. A plain writable
         # attribute would let any caller flip the flag after construction and
@@ -335,6 +340,20 @@ class ExperimentLedger:
         self._review_reference = review_reference
         self._samples: dict[str, Sample] = {}
         self._experiments: dict[str, Experiment] = {}
+        # §12.4: the latest moment this ledger has witnessed. A pre-registration
+        # backdated behind it is not a pre-registration.
+        self._latest_witnessed: dt.datetime | None = None
+
+    @property
+    def alpha(self) -> Decimal:
+        """The uncorrected significance level. Fixed at construction (§12.4)."""
+        return self._alpha_level
+
+    @property
+    def resolution_floor(self) -> Decimal:
+        """Below this, a sample can no longer distinguish an edge from a
+        coincidence. Fixed at construction (§12.4)."""
+        return self._resolution_floor
 
     @property
     def publication_cleared(self) -> bool:
@@ -408,6 +427,10 @@ class ExperimentLedger:
             else experiment.model_copy(update={"provenance": cited})
         )
         self._experiments[stored.hypothesis_id] = stored
+        # Every dated event advances the witness clock, so a later
+        # pre-registration cannot be backdated behind it (§12.4).
+        self._witness(stored.registered_at)
+        self._witness(stored.tested_at)
         return stored
 
     def register(
@@ -423,7 +446,25 @@ class ExperimentLedger:
         Takes no outcome and no p-value, and there is no parameter through which
         one could be supplied. That is the point: the ledger can only stamp
         PRE_REGISTERED on something it saw arrive empty.
+
+        That alone was not enough. An adversarial review pointed out that a
+        researcher who has already seen p=0.002 can call `register()` with a
+        `registered_at` a month in the past and then `record_result()` — two
+        ordinary calls, no provenance, and the record claims pre-registration.
+        So the registration timestamp is now checked against the latest moment
+        this ledger has witnessed: you cannot register a hypothesis as of a date
+        earlier than events already on the books.
+
+        **The limit of this guarantee, stated rather than glossed.** It makes
+        backdating detectable only to the extent the ledger has already seen
+        later events; a registration backdated on a fresh ledger is still
+        accepted, because nothing here can witness what happened before it
+        existed. A real pre-registration guarantee needs an external witness —
+        a commit hash, a signed timestamp — and §12.4 compliance still rests on
+        the researcher registering honestly. This narrows the hole; it does not
+        close it, and the docstring should not pretend otherwise.
         """
+        self._require_not_backdated(registered_at, "a hypothesis")
         experiment = Experiment(
             hypothesis_id=hypothesis_id,
             description=description,
@@ -434,6 +475,24 @@ class ExperimentLedger:
             outcome=ExperimentOutcome.PENDING,
         )
         return self.add(experiment)
+
+    def _require_not_backdated(self, moment: dt.datetime, what: str) -> None:
+        """§12.4: reject a timestamp behind what this ledger already witnessed."""
+        if moment.tzinfo is None:
+            raise ValueError(f"{what} needs a timezone-aware timestamp (§10.3)")
+        latest = self._latest_witnessed
+        if latest is not None and moment < latest:
+            raise ValueError(
+                f"cannot register {what} as of {moment.isoformat()}: this ledger has "
+                f"already witnessed events up to {latest.isoformat()}, so a registration "
+                f"dated earlier is a reconstruction, not a pre-registration (§12.4)"
+            )
+
+    def _witness(self, moment: dt.datetime | None) -> None:
+        if moment is None:
+            return
+        if self._latest_witnessed is None or moment > self._latest_witnessed:
+            self._latest_witnessed = moment
 
     def record_result(
         self,
@@ -468,6 +527,10 @@ class ExperimentLedger:
             description=existing.description,
             sample_id=existing.sample_id,
             metric=existing.metric,
+            # Carried from the existing record, never recomputed: a result
+            # cannot promote its own hypothesis to pre-registered. Mutating this
+            # line to Registration.PRE_REGISTERED left all 65 tests green, so
+            # `test_a_result_cannot_upgrade_a_post_hoc_registration` now pins it.
             registration=existing.registration,
             registered_at=existing.registered_at,
             outcome=outcome,

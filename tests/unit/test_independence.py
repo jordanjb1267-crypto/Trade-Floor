@@ -24,6 +24,7 @@ from trading_firm.independence import IndependenceLedger
 
 UTC = dt.UTC
 PACKET = "a" * 64
+MARKET_ID = "m" * 64
 NOW = dt.datetime(2026, 7, 30, 7, 40, tzinfo=UTC)
 
 WIDTH = "session_features_v1.asian_width_pips"
@@ -72,7 +73,7 @@ def thesis(trader: str, **overrides) -> AdaptiveThesis:
 
 @pytest.fixture
 def ledger() -> IndependenceLedger:
-    return IndependenceLedger(packet_id=PACKET)
+    return IndependenceLedger(packet_id=PACKET, market_id=MARKET_ID)
 
 
 class TestFirstPassIsolation:
