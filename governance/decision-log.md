@@ -965,3 +965,49 @@ changes made outside the repository and NOT captured here: `certifi` installed
 into `/usr/local/bin/python3` and a `cert.pem` symlink created under the 3.11
 framework — the manual repair is documented in `deploy/macos/README.md`, and the
 installer deliberately never performs it.
+
+**2026-07-31 · §7.2 `.env` reclassified as an owner-managed credential file;
+the contradictory hook message corrected.** The §17 secret scanner told
+operators that secrets "belong in the OS keychain or an untracked .env — never
+in repository files" while simultaneously blocking every write to `.env`. The
+guidance and the enforcement pointed in opposite directions: an owner following
+the message to the letter received a hard block naming no remedy. This surfaced
+in practice this session, when creating the owner's `.env` had to be handed back
+to the owner as a shell command because the tool path was blocked by the very
+check that recommended the destination.
+
+The contradiction concealed a real gap. `.env` was blocked only *incidentally* —
+because its contents happened to match a credential regex — not because any rule
+named it. A `.env` written with a short or unusually-shaped value passed straight
+through. A 12-case behavioural harness run against the pre-change hook confirms
+four such holes: a benign `.env`, a benign `.env` under owner override,
+`.env.local`, and a nested `deploy/.env` were all **allowed**.
+
+The remedy deliberately does **not** exempt `.env`; it does the opposite. A new
+`_is_owner_managed_env` check adds an explicit, unconditional prohibition on
+`.env` and every `.env.<suffix>` variant, matched on basename so the rule holds at
+any depth — mirroring how `.gitignore` already treats these paths. It is
+evaluated *before* `OWNER_APPROVED_PROTECTED_EDIT` is read, so an owner approval
+granted for a protected production path can never be spent unlocking a credential
+file. `.env.example` remains the single writable member of the family: tracked,
+value-free, and the place an agent adds a new variable name with an empty value.
+
+Both block messages now name the remedy instead of contradicting it. Each points
+at `scripts/check_env.py`, a structure-only validator reporting existence, the
+expected variable set, per-variable format, git-ignore status, and file mode as
+pass/fail, and never printing a value. That closes the loop the old message left
+open: an agent forbidden to write the file can still confirm the file is correct.
+
+Verification: the proposed hook passes all 12 harness cases, including the four
+the current hook fails; the patch applies cleanly via `git apply --check`.
+Operationally, the owner's `.env` was created manually on 2026-07-31 and
+validated 8/8 — three expected variables, no extras, formats correct, git-ignored,
+untracked, mode `0600`. No credential value entered the repository, any log, or
+any agent-visible output at any point.
+
+Scope limits, stated rather than implied: this changes hook *messaging* and adds
+a prohibition. It unlocks nothing. No agent gains any ability to read or write a
+credential, `Read(.env)` and `Read(.env.*)` remain denied in
+`.claude/settings.json`, and `live_allowed` remains empty everywhere. The hook
+remains fast feedback, not the security boundary — OS permissions and startup
+hash verification are the enforcement layers (§7.3, §17).
