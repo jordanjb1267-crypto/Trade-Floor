@@ -824,3 +824,27 @@ exit-variant tests, and one first look each for sweep-reversal and
 continuation — the clean path is post-2026-07-29 data. Research code is
 publication-gated (§12.7): no number may be published until its code paths
 pass an independent, refutation-default adversarial review.
+
+**2026-07-31 · §18 Telegram notification path built and verified
+end-to-end.** The owner added `api.telegram.org` to the Claude Code
+environment's network allowlist and supplied `TELEGRAM_BOT_TOKEN` /
+`TELEGRAM_CHAT_ID` as environment settings (a fresh session was required —
+network-policy changes only reach new containers). Implemented
+`src/trading_firm/notify/telegram.py`: stdlib-only, deterministic, advisory
+(`send()`/`get_me()` return a result and never raise — a notification
+channel must not be able to crash the process it reports on), with every
+error path sanitized because Telegram's API puts the bot token in the
+request URL. Credential preflight is shared with the OANDA path:
+`execution/credentials.py`'s validator is now public
+(`validate_credential`) so the placeholder vocabulary cannot drift between
+the two. End-to-end verification **PASSED 2/2** at 2026-07-31T02:37Z —
+`getMe` resolved the live bot and `sendMessage` delivered `message_id=8` to
+the redacted owner chat `50…33`
+(`docs/audits/2026-07-31-telegram-notify-e2e.md`). The notify package
+imports no broker code and carries no order capability (§0.3); unit tests
+pin fail-closed preflight, token-leak containment, the bounded
+fixed-delay retry policy, truncation at Telegram's 4096-char limit, and
+chat-id redaction (862 total passing). Limits stated: this validates the
+channel from the remote environment, not from the trading laptop, and no
+runtime caller is wired yet — incident/watchdog integration is future
+work. Nothing was unlocked; `live_allowed` remains empty everywhere.
