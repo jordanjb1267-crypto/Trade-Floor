@@ -19,5 +19,13 @@ jobs:
         run: ruff check src tests scripts
       - name: Validate configuration layers
         run: python3 scripts/validate_config.py
+      # §-citations are the primary rule identifier in this repo, including
+      # inside the ValueError messages an operator reads during an incident.
+      # These two were run by hand until 2026-07-30 while a decision-log entry
+      # claimed they "fail CI" — a guard that is not wired cannot fail anything.
+      - name: Spec references resolve
+        run: python3 scripts/check_spec_refs.py
+      - name: Quoted spec text is in the section it cites
+        run: python3 scripts/check_spec_quotes.py
       - name: Tests
         run: pytest -q

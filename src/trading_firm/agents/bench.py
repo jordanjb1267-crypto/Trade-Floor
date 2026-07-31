@@ -40,7 +40,7 @@ not one, so support is not evidence of edge. LLM-derived input may lower the
 tier the risk gate considers and never raise it.
 
 **Scoring (§6.3 bullet 4, §6.6 / A-2).** Relevance is computed here, not
-claimed, so "inside its declared domain" is a deterministic fact about the
+claimed, so being "within its declared domain" (§6.3) is a deterministic fact about the
 market rather than a post-hoc judgement about the outcome. An out-of-domain
 consultation is unscored in both directions — a correct ``NOT_APPLICABLE``
 outside the domain "is never a miss" (§6.6), and an out-of-domain ``SUPPORT``

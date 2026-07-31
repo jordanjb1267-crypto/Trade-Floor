@@ -5,13 +5,15 @@ and decides whether *any* candidate deserves formal risk review. It is given
 four rules and one power. Three of the four already have mechanisms elsewhere
 and this module deliberately reuses them rather than re-deriving them:
 
-- "Must not reveal Alpha's analysis to Beta or vice versa before both submit
-  locked first-pass reports" — `IndependenceLedger.for_arbiter()` refuses to
-  release either report until both exist (§6.2 rule 5).
-- "Must distinguish independent agreement from duplicated evidence" —
-  `Agreement.materially_independent` computes it from the two feature sets
-  (§6.2 rule 7).
-- "Cannot transform an E1 or E2 hypothesis into a high-risk live trade" —
+- §6.1 forbids it to "reveal Alpha's analysis to Beta or Beta's analysis to
+  Alpha before both submit locked first-pass reports" —
+  `IndependenceLedger.for_arbiter()` refuses to release either report until
+  both exist, implementing §6.2 rule 5.
+- §6.1 requires it to "distinguish independent agreement from duplicated
+  evidence" — `Agreement.materially_independent` computes that from the two
+  feature sets, implementing §6.2 rule 7.
+- §6.1 also says it "cannot transform an E1 or E2 hypothesis into a high-risk
+  live trade" —
   `EvidenceClass.max_edge_tier` maps E1 and E2 to tier 0, so the transformation
   is unrepresentable rather than merely forbidden (§5.2). This module routes its
   tier ceiling through that table and adds no second copy of it.

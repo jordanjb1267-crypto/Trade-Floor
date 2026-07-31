@@ -490,9 +490,17 @@ class ExperimentLedger:
                 f"next experiment but can never be the confirmation of itself"
             )
 
-        # §12.4 immutable holdout: "inspected once, ever". Documented in
-        # SampleRole and enforced by nothing — five successive writes to a
-        # holdout were accepted, which is mining it until something clears.
+        # §12.4 requires "immutable holdout periods that Senior Trader and
+        # research agents cannot inspect during development". SampleRole's
+        # shorthand for that is inspected-once-ever, which was documented and
+        # enforced by nothing — five successive writes to a holdout were
+        # accepted, which is mining it until something clears.
+        #
+        # The shorthand is an interpretation, so it is worth stating: the spec
+        # bars inspection "during development", and this permits exactly one
+        # terminal look. That is standard holdout practice and strictly tighter
+        # than an unbounded reading, but it is the module's reading and not the
+        # section's words.
         if sample.role is SampleRole.HOLDOUT and experiment.outcome.consumed_the_sample:
             already = [
                 e
