@@ -57,13 +57,15 @@ class RiskEngine:
 
         candidate_key = candidate.content_key()
 
-        def reject(tier: EdgeTier = EdgeTier.NONE) -> RiskDecision:
+        def reject(tier: EdgeTier = EdgeTier.NONE, bound_by: str | None = None) -> RiskDecision:
             return RiskDecision(
                 approved=False,
                 tier=tier,
                 allowed_risk_usd=_ZERO,
                 reasons=tuple(reasons),
                 candidate_key=candidate_key,
+                thesis_ceiling=candidate.thesis_ceiling,
+                tier_bound_by=bound_by,
             )
 
         # --- fail-closed gates (§0.10): any doubt -> no new entry ---------------
@@ -119,21 +121,45 @@ class RiskEngine:
             return reject()
 
         # --- tier: score sets the ceiling; deterministic gates only lower it -----
+        # Every assignment below moves the tier DOWN. That is the property A-2
+        # depends on and §5.1 states: firm state (drawdown, session loss, trade
+        # counts) reaches this block only as a reducer. `tier_bound_by` records
+        # which reducer last moved it, so the audit trail distinguishes a
+        # gate-bound decision from a thesis-bound one (§25).
         tier = tier_from_score(candidate.edge_score)
         if tier is EdgeTier.NONE:
             reasons.append("edge score below 70: no qualified edge (§5.2)")
-            return reject()
+            return reject(bound_by="edge score (§5.2)")
+        tier_bound_by = "edge score (§5.2)"
+
+        # A-2: the thesis's own novelty x evidence ceiling. Lowers only — a
+        # thesis cannot raise the tier its evidence score already set (§5.2).
+        ceiling = candidate.thesis_ceiling
+        if ceiling is not None and ceiling < tier:
+            tier = ceiling
+            tier_bound_by = "thesis classification: novelty x evidence (§5.2, §6.8)"
+            if tier is EdgeTier.NONE:
+                reasons.append(
+                    "thesis classification permits no live tier: an unvalidated novelty "
+                    "or evidence class cannot place a live order (§5.2, §6.8)"
+                )
+                return reject(bound_by=tier_bound_by)
+
         cap = max_tier_for_drawdown(state)
         if tier > cap:
             tier = cap
+            tier_bound_by = "drawdown cap (§4.5)"
         if tier is EdgeTier.EXCEPTIONAL:
             ladder = cfg.risk_ladder.exceptional
             if account.session_realized_loss > _ZERO and ladder.prohibited_after_session_loss:
                 tier = EdgeTier.HIGH  # §3.4: session loss disables Exceptional
+                tier_bound_by = "session loss disables Exceptional (§3.4)"
             elif account.exceptional_trades_this_session >= risk.max_exceptional_trades_per_session:
                 tier = EdgeTier.HIGH  # §3.4: one exceptional trade per session
+                tier_bound_by = "one Exceptional trade per session (§3.4)"
             elif ladder.human_approval_during_probation and not candidate.human_approval:
                 tier = EdgeTier.HIGH  # §5.3: explicit human approval required
+                tier_bound_by = "Exceptional requires explicit human approval (§5.3)"
 
         # --- §3.3 minimum over all capacities ------------------------------------
         tier_cfg = {
@@ -163,7 +189,7 @@ class RiskEngine:
         allowed = cents(capacities[binding])
         if allowed <= _ZERO:
             reasons.append(f"no positive risk capacity; binding: {binding}")
-            return reject(tier)
+            return reject(tier, bound_by=tier_bound_by)
 
         return RiskDecision(
             approved=True,
@@ -172,4 +198,6 @@ class RiskEngine:
             reasons=tuple(f"{name} = {cents(value)}" for name, value in capacities.items()),
             candidate_key=candidate_key,
             binding_constraint=binding,
+            thesis_ceiling=candidate.thesis_ceiling,
+            tier_bound_by=tier_bound_by,
         )

@@ -664,8 +664,160 @@ divergence days. Suite 284 → 305. Pass 2 (Alpha/Beta agents, packet runtime,
 Arbiter, analog engine, experiment ledger) is scoped separately. v2.0.0 is
 committed verbatim (SHA-256 96633f32…) and v1.1.4 preserved unedited (§0.11).
 
-**Standing owner to-dos:** none outstanding. Next action is owner-side:
-begin Phase 6 shadow operation on the trading laptop when ready (§22, §13).
+**2026-07-30 · Return target clarified as a GOAL, not a hard deadline
+(owner).** Earlier in the session the owner described the firm's mandate as a
+5–6 figure return within 30–45 days, framed as existential. The implementer
+answered with the arithmetic: from $250 that is a 40x–400x compound return,
+requiring roughly 12–19% per session sustained; at the Exceptional tier's 10%
+risk with 1.5R targets it demands a win rate above 90%, and above 100% —
+literally impossible — for the 30-day case. Measured champion win rate is
+48.4% with negative expectancy, and the F-1 margin overlay caps deployable
+risk near $1.80 on a 16-pip stop at this equity. The owner has now clarified
+the target is aspirational, not a hard constraint.
+
+Recorded because the distinction is load-bearing for behavior, not merely
+morale. A hard deadline creates pressure toward exactly the actions §3.5
+prohibits — forcing setups to reach a target, increasing frequency in a quiet
+session, continuing to trade because profit is below a desired amount, and
+expanding risk after gains — and toward the §12.x shortcuts (skipping the
+probation sample, trusting a flattering number) that the achievable-fill
+defect showed are easy to fall into. With the target held as a goal, the
+firm's operating posture is unchanged and unambiguous: §3.5's no-profit-target
+doctrine governs, "no trade" remains a preferred outcome (§0 rule 6), and no
+risk limit, evidence threshold, or promotion gate flexes for a calendar date.
+No configuration or code change follows from this entry; it exists so a future
+session reading the earlier framing does not infer license to trade harder.
+
+**2026-07-30 · A-2 ratified: conviction discipline. Spec v2.1.0 -> v2.2.0
+(owner).** The owner directed a refinement of the goal framing recorded in the
+entry above: agents "should be encouraged to trade harder with achieving the
+goal in mind when they have found an edge in sessions. Never just blindly out
+of pressure of reaching a target." The implementer proposed A-2 in
+`docs/design/2026-07-30-v2-pass-2-scope.md`; the owner ratified it, and set the
+Pass 2 agent roster at nine files.
+
+The design problem is that conviction-driven and pressure-driven sizing produce
+the same action. They are distinguishable only by their inputs, so A-2
+separates them by input class rather than by instruction. Evidence — a function
+of the market: evidence and novelty class, registry feature values, analog
+statistics, regime fit, execution conditions — may raise the ceiling the risk
+gate considers. Firm state — a function of us: equity, elapsed days, session
+and cumulative P&L, trades taken, time left in the window — may only lower it.
+That reduces the owner's distinction to a property test: classification must be
+a pure function of the Market State Packet, bit-identical across firm states
+including one far behind any aspiration. §21 now requires it as both a unit
+test and an acceptance criterion. §6A's packet mixes the two classes, so Pass 2
+splits it into MarketState and FirmState under one checksum, with the
+classifier signature admitting only the former — the M-1 move that made
+tier-raising unrepresentable rather than merely prohibited.
+
+The reach half was the part that needed building, because the firm's incentive
+gradient was one-sided. Over-sizing is already structurally impossible: the
+risk engine only ever lowers a tier, `TierAdjustment.adjustment` is
+`Field(le=0)`, and `profit_target: None` is a type, so the firm cannot
+represent a target and cannot compute that it is behind one. Under-sizing was
+invisible — holding E5 evidence and filing E3 produced no error, no audit
+anomaly, and no scored penalty, while §6.6 forbade only the mirror failure of
+rewarding more trades. Free caution is not neutral; it is a systematic negative
+bias on expectancy that nothing detected. A-2 scores under-classification
+symmetrically with over-classification, adds a `thesis_ceiling` audit field so
+the record distinguishes a gate-bound decision from a thesis-bound one, and
+fences the expectation with five absolute bounds: a correct no-trade is never a
+miss, a correct NOT_APPLICABLE is never a miss, uncertainty resolves downward,
+scoring is post-session only (an in-session signal would itself be a pressure
+input), and classification stays pressure-invariant.
+
+Recorded explicitly because the entry above closes with the line that a future
+session must not infer license to trade harder. A-2 refines that entry and does
+not reverse it. It grants no permission and adds no input to the risk gate:
+`risk/engine.py` is unchanged. It unlocks nothing at ratification, since all
+three manifests carry `risk_permissions` false, so the route to larger size
+runs through §12.5 promotion and the §12.6 thresholds and nowhere else. §3.5,
+§0 rule 6, and §0 rule 7 take precedence wherever they and §6.6 appear to
+conflict, and that precedence is written into the spec text rather than left to
+inference. v2.2.0 tags A-2 inline in §3.5, §5.1, §6.6, §21, §25 and records it
+in §29; a diff against v2.1.0 shows no provision removed from §0-§28. v2.1.0 is
+preserved unedited (§0.11).
+
+Roster decision: nine agent files, not the §6 roster of twenty-one — the
+existing six rewritten against v2.2.0 plus Alpha, Beta, and the Arbiter, with
+§6.4/§6.5 roles staying consolidated into Chief Quant and Context Analyst. A
+deliberate deviation from the §6 letter in service of §6's own instruction to
+"use the smallest number of high-quality agents that produces genuine
+specialization" and not to "create agents merely to simulate a large firm".
+
+**2026-07-30 · v2 Adoption Pass 2 delivered; adversarial review found 30
+defects in 3 of 5 modules.** All twelve workstreams shipped: Market State
+Packet with the A-2 market/firm split, the §6.2 independence protocol, the
+Arbiter, the specialist bench and context aggregation, the historical-analog
+engine, the experiment/multiple-testing ledger, the §11 adaptive policy
+manifest, the A-2 classification machinery and thesis ceiling, the nine agent
+files, end-to-end §21 acceptance tests, and the updated model-routing policy.
+Suite 305 -> 837.
+
+Five modules were built by parallel agents; each was paired with an independent
+refutation-default reviewer. **Three of three reviewed modules came back
+DEFECTIVE** — 30 findings, 4 critical, every one verified by execution or
+mutation rather than asserted. Two reviewers died on an account spend limit, so
+`analogs.py` and the nine agent files were reviewed directly instead; both are
+sound, and `analogs.py`'s §12.7 gate is the strongest control in the codebase
+(clearance requires an AdversarialReview record with reviewer != author, full
+coverage, and a decision-log reference, and the formatter re-checks the record
+so an `object.__setattr__` bypass of the flag still refuses).
+
+The findings share one shape, and it is worth naming because it will recur:
+**a guarantee asserted in a docstring that the code did not deliver.** A guard
+matching one name and called comprehensive. An invariant comparing three
+caller-supplied values to each other and called unrepresentable. A frozen model
+holding a mutable dict. A holdout documented as inspected-once and enforced by
+nothing. A `may_support_confirmation` property with no caller. In a codebase
+where the guards ARE the product, a guard that cannot fail is the most
+expensive thing in it, because it manufactures the confidence that stops anyone
+looking again.
+
+The most serious finding was against the A-2 guard itself — the control this
+amendment was ratified to create. It matched the single literal `FirmSnapshot`,
+and a reviewer defeated it by importing `AccountState` instead and making the
+significance threshold triple when `session_realized_loss > 0`: a firm losing
+money would need LESS evidence to call a result significant, and all 65 tests
+stayed green. Reproduced before fixing. The guard now lives once in
+`tests/a2_guard.py` over the whole firm-state vocabulary; it had been copied
+into five test files, which multiplied the blind spot rather than the
+protection. No live violation existed — the defect was that the guard would not
+have noticed one.
+
+Two process facts recorded because they change what "verified" means here.
+`scripts/check_spec_refs.py` was **never wired into CI**, while an earlier entry
+in this log claimed it "now fails CI on an unresolvable reference" — it had been
+run by hand throughout. And `check_spec_refs.py` structurally cannot catch a
+misattributed quote: it proves §N resolves to a real heading, not that the
+section says what the code claims. That gap let `bench.py` attribute two §1
+sentences to §6.3 with CI green, and it is the same shape as the six agent files
+that passed CI for three spec versions while pointing at v1.1.3. Both checkers
+now run in CI, and the new `scripts/check_spec_quotes.py` closes the attribution
+gap — it immediately found three more misattributions in `arbiter.py` and
+`bench.py`. That checker failed to catch its own motivating example twice before
+it worked (a word-count threshold, then docstring quote-pairing); writing a
+guard is no protection against writing it wrong.
+
+**Nothing was unlocked.** `live_allowed` is empty, no strategy status moved, no
+`risk_permissions` flag flipped, and `allowed_novelty_classes_live` is empty in
+the adaptive policy manifest. A-2 granted no permission, exactly as §29.0 said:
+the route to larger size runs through §12.5 promotion and the §12.6 thresholds
+and nowhere else.
+
+**Limits carried forward, not closed.** Pre-registration backdating is narrowed
+— the witness clock cannot detect it on a fresh ledger, and closing it needs an
+external witness. The A-2 and analog direction guards are denylists over the
+vocabulary this codebase uses. The model-routing policy is not machine-enforced
+and cannot be. Each is stated in the code that carries it rather than left for a
+future reader to discover.
+
+**Standing owner to-dos:** none outstanding. Implementer is building v2
+Adoption Pass 2 in the order set in `docs/design/2026-07-30-v2-pass-2-scope.md`
+part 5 (W1 packet, W8 adaptive policy manifest, then the agent layer). Owner-side
+next action remains Phase 6 shadow operation on the trading laptop when ready
+(§22, §13).
 Before any new strategy research, note that §12.4's multiple-testing ledger
 against the GBP sample already carries a breakout baseline, three spent
 exit-variant tests, and one first look each for sweep-reversal and

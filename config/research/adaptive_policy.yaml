@@ -1,0 +1,59 @@
+# §11 adaptive policy manifest — what Senior Traders may combine.
+#
+# status: research. `allowed_novelty_classes_live` is EMPTY and the schema
+# refuses to populate it below live status: a policy change is a production
+# change and carries the same §12.5 promotion controls as a strategy change.
+adaptive_policy_id: senior_trader_policy
+version: 1.0.0
+status: research
+
+# Only features the deterministic engine actually computes and that research
+# has exercised. A thesis citing anything else is capped at E1 (§5.2, §11).
+approved_feature_registry:
+  - session_features_v1.asian_high
+  - session_features_v1.asian_low
+  - session_features_v1.asian_width_pips
+  - session_features_v1.asian_bar_count
+  - session_features_v1.pre_london_range_pips
+  - session_features_v1.compression_ratio
+  - session_features_v1.prior_session_high
+  - session_features_v1.prior_session_low
+
+approved_indicator_registry: []
+approved_trading_primitives:
+  - range_breakout
+  - liquidity_sweep_reversal
+  - directional_continuation
+
+# §6.8: N2/N3 can never be listed here; the schema rejects them outright.
+# Empty at research status, and stays empty until §12.5 promotion.
+allowed_novelty_classes_live: []
+limited_probation_classes: []
+
+# §5.2 E2 "limited analog support" — a thesis with fewer analogs than this is
+# capped at E2 regardless of how it reads.
+required_analog_sample_size: 30
+
+# §5.3 execution-conditions gate. F-3 measured London-session GBP_USD spreads;
+# 2.0 pips is inside the normal regime and well below the ~10x rollover
+# distortion F-5 documented.
+max_spread_pips: 2.0
+
+required_evidence_class_by_risk_tier:
+  standard: E3
+  strong: E3
+  high: E4
+  exceptional: E5
+
+# §11 names the first five; the schema refuses a manifest that drops any of
+# them. A policy may lengthen this list, never shorten it.
+prohibited_behaviors:
+  - intraday_parameter_fitting
+  - unversioned_indicator_creation
+  - lookahead_data
+  - post_loss_risk_escalation
+  - narrative_only_edge_claim
+  - target_driven_risk_escalation   # A-2 / §3.5: pressure is never an input
+
+validation_record_id: null
+promotion_record_id: null
