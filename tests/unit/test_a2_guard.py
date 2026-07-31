@@ -23,6 +23,19 @@ PRESSURE_BLIND_MODULES = [
     "trading_firm.agents.bench",
     "trading_firm.research.experiments",
     "trading_firm.research.analogs",
+    # §30 surveillance, market side: everything that observes, classifies, or
+    # sets a significance threshold is a pure function of the market (§5.1).
+    # The post-entry side (surveillance.monitoring, surveillance.positions.*)
+    # is deliberately NOT here — it reads position state by design (§30.10)
+    # and is fenced by TestContradictionStaysOutOfTheMarketSide instead.
+    "trading_firm.surveillance.schemas",
+    "trading_firm.surveillance.freshness",
+    "trading_firm.surveillance.state_builder",
+    "trading_firm.surveillance.materiality",
+    "trading_firm.surveillance.technical.structure",
+    "trading_firm.surveillance.technical.indicators",
+    "trading_firm.surveillance.technical.liquidity",
+    "trading_firm.surveillance.technical.regime",
 ]
 
 
