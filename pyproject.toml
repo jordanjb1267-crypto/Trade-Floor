@@ -23,6 +23,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `tests/a2_guard.py` is a shared helper, not a test module: the A-2
+# pressure-invariance check (§5.1) lives in one place so strengthening it
+# strengthens every module that imports it.
+pythonpath = ["tests"]
 
 [tool.ruff]
 line-length = 100

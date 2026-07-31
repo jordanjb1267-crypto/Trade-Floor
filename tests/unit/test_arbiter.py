@@ -650,3 +650,18 @@ class TestEvidenceOrderIntegrity:
     def test_novelty_declaration_order_narrows_permissions(self) -> None:
         live = [nv.may_trade_live for nv in NoveltyClass]
         assert live == sorted(live, reverse=True), "N0..N3 must narrow, never widen (§6.8)"
+
+
+def test_module_is_pressure_blind_under_the_shared_guard() -> None:
+    """A-2 (§5.1) via `tests/a2_guard.py`.
+
+    The local guards in this file check the single name `FirmSnapshot`. An
+    adversarial review defeated that by importing `AccountState` instead, so
+    the shared guard checks the whole firm-state vocabulary. Both run: the
+    local one gives a module-specific message, this one is the real check.
+    """
+    import importlib
+
+    from a2_guard import assert_pressure_blind
+
+    assert_pressure_blind(importlib.import_module("trading_firm.arbiter"))

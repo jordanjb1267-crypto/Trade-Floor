@@ -815,3 +815,18 @@ class TestPressureInvariance:
         b = spent_gbp_ledger()
         assert a.required_p_value(GBP_SAMPLE_ID) == b.required_p_value(GBP_SAMPLE_ID)
         assert a.status(GBP_SAMPLE_ID) == b.status(GBP_SAMPLE_ID)
+
+
+def test_module_is_pressure_blind_under_the_shared_guard() -> None:
+    """A-2 (§5.1) via `tests/a2_guard.py`.
+
+    The local guards in this file check the single name `FirmSnapshot`. An
+    adversarial review defeated that by importing `AccountState` instead, so
+    the shared guard checks the whole firm-state vocabulary. Both run: the
+    local one gives a module-specific message, this one is the real check.
+    """
+    import importlib
+
+    from a2_guard import assert_pressure_blind
+
+    assert_pressure_blind(importlib.import_module("trading_firm.research.experiments"))

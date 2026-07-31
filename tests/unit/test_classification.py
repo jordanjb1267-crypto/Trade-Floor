@@ -312,3 +312,18 @@ class TestClaimReconciliation:
     def test_result_carries_the_market_id_it_was_computed_from(self, policy) -> None:
         snapshot = market()
         assert classify(thesis(), snapshot, policy).market_id == snapshot.checksum
+
+
+def test_module_is_pressure_blind_under_the_shared_guard() -> None:
+    """A-2 (§5.1) via `tests/a2_guard.py`.
+
+    The local guards in this file check the single name `FirmSnapshot`. An
+    adversarial review defeated that by importing `AccountState` instead, so
+    the shared guard checks the whole firm-state vocabulary. Both run: the
+    local one gives a module-specific message, this one is the real check.
+    """
+    import importlib
+
+    from a2_guard import assert_pressure_blind
+
+    assert_pressure_blind(importlib.import_module("trading_firm.classification"))
