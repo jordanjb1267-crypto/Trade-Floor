@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- §18 process supervisor for macOS. DELIBERATELY NO StartCalendarInterval:
+       launchd calendar times fire in the machine's LOCAL zone, which on a
+       Chicago laptop reintroduces finding C-2 (27 divergence days in 2026,
+       each firing an hour off London). The agent stays alive and the Python
+       supervisor computes every wakeup in Europe/London via zoneinfo
+       (src/trading_firm/runner/schedule.py, tested across all 27 days). -->
+  <key>Label</key>
+  <string>com.tradefloor.supervisor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <!-- -i: prevent idle sleep while the supervisor runs (§18 "sleep and
+         hibernation disabled during session"). Scoped to this process tree,
+         so the machine sleeps normally whenever the supervisor is stopped;
+         no pmset/system-wide change is required or made. -->
+    <string>-i</string>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>scripts/run_supervisor.py</string>
+  </array>
+
+  <!-- install.sh substitutes the real repository path here. -->
+  <key>WorkingDirectory</key>
+  <string>__REPO_PATH__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- §18 automatic restart. KeepAlive with SuccessfulExit=false restarts on
+       crash but respects a clean exit, so `launchctl bootout` and a deliberate
+       shutdown stay possible. ThrottleInterval stops a crash loop from
+       spinning: §18 restart behaviour requires reconciliation before anything
+       else, and a supervisor that cannot get through reconciliation should be
+       retrying slowly, not hot-looping. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>__REPO_PATH__/logs/supervisor.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO_PATH__/logs/supervisor.err.log</string>
+
+  <!-- The supervisor reads credentials from the untracked .env in the
+       WorkingDirectory (§17); nothing secret appears in this file. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+</dict>
+</plist>
