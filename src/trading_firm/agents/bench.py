@@ -626,7 +626,12 @@ class RegimeReading(_Strict):
 
     regime: RegimeLabel
     feature_version: str = Field(min_length=1)
-    measures: dict[str, Decimal]
+    # Mapping, not dict: pydantic's frozen flag blocks attribute rebinding but
+    # not in-place mutation, so a plain dict left the grounding validator
+    # bypassable — `reading.measures['the tape looks tight to me'] = ...` after
+    # construction put unvalidated prose into a record the validator exists to
+    # keep free of it. Frozen below so the field is what it was checked as.
+    measures: Mapping[str, Decimal]
     note: str | None = None
 
     @model_validator(mode="after")
@@ -643,6 +648,7 @@ class RegimeReading(_Strict):
                 f"regime measures {prose} are not feature identifiers: measures must name "
                 f"features from the approved registry, not describe them (§6.4, §11)"
             )
+        object.__setattr__(self, "measures", MappingProxyType(dict(self.measures)))
         return self
 
 
@@ -872,4 +878,33 @@ class ContextPacket(_Strict):
                 f"regime analyst reported {self.regime.regime.value} but the deterministic "
                 f"packet says {market.regime!r}: an agent may not restate a computed value "
                 f"as something else (§6A, §6.4)"
+            )
+        # Every OTHER value this packet restates from the snapshot, checked the
+        # same way. Binding the checksum and the regime alone left a context
+        # report free to contradict the packet on spread, event state, analog
+        # depth, and observation time — the four inputs that set the evidence
+        # ceiling in classification.py — while passing verification. A report
+        # that disagrees with the packet it cites is worse than one that omits
+        # the value, because it looks corroborating.
+        restated = (
+            ("execution.spread_pips", self.execution.spread_pips, market.spread_pips),
+            (
+                "event_risk.blackout_active",
+                self.event_risk.blackout_active,
+                market.high_impact_event_active,
+            ),
+            ("analog_sample_size", self.analog_sample_size, market.analog_sample_size),
+            ("observed_at", self.observed_at, market.observed_at),
+        )
+        disagreements = [
+            f"{name}={reported!r} vs packet {computed!r}"
+            for name, reported, computed in restated
+            if reported != computed
+        ]
+        if disagreements:
+            raise ValueError(
+                f"context packet contradicts the market packet it cites: "
+                f"{'; '.join(disagreements)}. These values set the evidence ceiling "
+                f"(§5.3), so a context report may restate them but never revise them "
+                f"(§6A, §6.4, §0.10)"
             )

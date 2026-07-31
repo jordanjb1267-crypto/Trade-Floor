@@ -678,8 +678,17 @@ class ExperimentLedger:
         positively-dependent tests, which repeated variant sweeps over one trade
         set violate — treat a BH verdict on such a family as indicative only.
 
-        Experiments without a recorded p-value are excluded from the procedure
-        but still count in `tests_recorded`, so their multiplicity is not lost.
+        The family size `m` is `tests_recorded`, NOT the number of p-values.
+
+        An earlier version used `len(scored)`, which silently discarded
+        `variants_tested`: a 19-variant sweep reporting only its best p-value
+        counted as ONE member of the family, while Bonferroni over the same
+        ledger counted twenty. An adversarial review showed the consequence — a
+        19-variant sweep at p=0.02 plus one test at p=0.04 were BOTH declared
+        significant, when the sweep is exactly the multiplicity BH exists to
+        price. Experiments without a p-value are still excluded from the
+        ranking, but they now inflate `m` as they should, which is what the
+        phrase "their multiplicity is not lost" was always supposed to mean.
         """
         a = self._alpha(alpha)
         scored: list[tuple[Decimal, str]] = sorted(
@@ -689,7 +698,9 @@ class ExperimentLedger:
         )
         if not scored:
             return ()
-        m = Decimal(len(scored))
+        # Never below len(scored): a family cannot be smaller than the number of
+        # results drawn from it.
+        m = Decimal(max(self.tests_recorded(sample_id), len(scored)))
         ranked = [
             (rank, p, hypothesis_id, (Decimal(rank) / m) * a)
             for rank, (p, hypothesis_id) in enumerate(scored, start=1)

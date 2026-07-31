@@ -916,3 +916,58 @@ class TestCorrectionParametersAreFixed:
         with pytest.raises(AttributeError):
             ledger.resolution_floor = Decimal("0")
         assert ledger.resolution_floor > 0
+
+
+class TestVariantMultiplicityReachesBH:
+    """§12.4: a variant sweep is the multiplicity BH exists to price.
+
+    The reviewer's scenario: a 19-variant sweep reporting only its best p-value
+    counted as ONE family member, so `m=2` and both results were declared
+    significant, while Bonferroni over the same ledger correctly counted 20.
+    """
+
+    @staticmethod
+    def _swept_ledger() -> ExperimentLedger:
+        ledger = ExperimentLedger()
+        ledger.add_sample(gbp_sample())
+        ledger.record_post_hoc(
+            "sweep", "19 exit variants, best reported", GBP_SAMPLE_ID, "profit_factor",
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC),
+            p_value=Decimal("0.02"), variants_tested=19,
+        )
+        ledger.record_post_hoc(
+            "other", "one further test", GBP_SAMPLE_ID, "profit_factor",
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 21, tzinfo=UTC),
+            p_value=Decimal("0.04"),
+        )
+        return ledger
+
+    def test_the_sweep_is_not_called_a_discovery(self) -> None:
+        decisions = self._swept_ledger().benjamini_hochberg(GBP_SAMPLE_ID)
+        assert not any(d.significant for d in decisions), (
+            "a 19-variant sweep at p=0.02 is not a discovery; counting it as one "
+            "family member is the exact multiplicity BH is for (§12.4)"
+        )
+
+    def test_bh_family_size_agrees_with_the_trial_count(self) -> None:
+        ledger = self._swept_ledger()
+        assert ledger.tests_recorded(GBP_SAMPLE_ID) == 20
+        # critical = rank/m * alpha, so the rank-1 value pins m.
+        rank_one = min(ledger.benjamini_hochberg(GBP_SAMPLE_ID), key=lambda d: d.p_value)
+        assert rank_one.critical_value == DEFAULT_ALPHA / Decimal(20), (
+            "BH and Bonferroni must not disagree about how many tests were run"
+        )
+
+    def test_family_is_never_smaller_than_the_results_drawn_from_it(self) -> None:
+        ledger = ExperimentLedger()
+        ledger.add_sample(gbp_sample())
+        for i in range(3):
+            ledger.record_post_hoc(
+                f"h{i}", "d", GBP_SAMPLE_ID, "profit_factor",
+                outcome=ExperimentOutcome.SUPPORTED,
+                tested_at=dt.datetime(2026, 7, 20 + i, tzinfo=UTC),
+                p_value=Decimal("0.001"),
+            )
+        assert len(ledger.benjamini_hochberg(GBP_SAMPLE_ID)) == 3

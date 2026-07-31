@@ -868,3 +868,91 @@ def test_module_is_pressure_blind_under_the_shared_guard() -> None:
     from a2_guard import assert_pressure_blind
 
     assert_pressure_blind(importlib.import_module("trading_firm.agents.bench"))
+
+
+class TestRegimeMeasuresCannotBeMutatedPastTheValidator:
+    """§6.4: a regime call must stay grounded in what the validator checked.
+
+    Pydantic's frozen flag blocks attribute rebinding but not in-place
+    mutation, so a plain `dict` field left the grounding rule bypassable in one
+    line after construction.
+    """
+
+    def test_measures_reject_prose_at_construction(self) -> None:
+        with pytest.raises(ValidationError, match="not feature identifiers"):
+            RegimeReading(
+                regime=RegimeLabel.COMPRESSION,
+                feature_version="session_features_v1",
+                measures={"the tape just looks tight to me": Decimal("1")},
+            )
+
+    def test_measures_cannot_be_mutated_after_construction(self) -> None:
+        reading = RegimeReading(
+            regime=RegimeLabel.COMPRESSION,
+            feature_version="session_features_v1",
+            measures={"session_features_v1.asian_width_pips": Decimal("38")},
+        )
+        with pytest.raises(TypeError):
+            reading.measures["the tape just looks tight to me"] = Decimal("1")
+
+    def test_the_caller_s_dict_is_copied_not_captured(self) -> None:
+        supplied = {"session_features_v1.asian_width_pips": Decimal("38")}
+        reading = RegimeReading(
+            regime=RegimeLabel.COMPRESSION,
+            feature_version="session_features_v1",
+            measures=supplied,
+        )
+        supplied["session_features_v1.compression_ratio"] = Decimal("0.4")
+        assert "session_features_v1.compression_ratio" not in reading.measures, (
+            "holding the caller's dict lets it be edited from outside the record"
+        )
+
+
+class TestContextCannotContradictThePacketItCites:
+    """§6A/§6.4: a context report may restate the packet, never revise it.
+
+    Binding only the checksum and the regime left a report free to contradict
+    the packet on spread, event state, analog depth, and observation time — the
+    four values that set the evidence ceiling in classification.py — while
+    verify_against reported it healthy. A report that disagrees with its own
+    source is worse than one that omits the value: it looks corroborating.
+    """
+
+    def test_the_honest_packet_verifies(self) -> None:
+        context().verify_against(market())  # does not raise
+
+    def test_a_narrower_reported_spread_is_caught(self) -> None:
+        wide = market(spread_pips=Decimal("9.0"))
+        # Claims a tradeable 1.2-pip spread over a 9-pip tape: §5.3 caps E3 on
+        # spread, so this is the difference between Exceptional and not.
+        packet = context(market_id=wide.checksum, execution=execution(spread_pips=Decimal("1.2")))
+        with pytest.raises(ValueError, match="spread_pips"):
+            packet.verify_against(wide)
+
+    def test_a_suppressed_event_blackout_is_caught(self) -> None:
+        eventful = market(high_impact_event_active=True)
+        packet = context(market_id=eventful.checksum, event_risk=event_risk(blackout_active=False))
+        with pytest.raises(ValueError, match="blackout_active"):
+            packet.verify_against(eventful)
+
+    def test_an_inflated_analog_depth_is_caught(self) -> None:
+        thin = market(analog_sample_size=3)
+        packet = context(market_id=thin.checksum, analog_sample_size=40)
+        with pytest.raises(ValueError, match="analog_sample_size"):
+            packet.verify_against(thin)
+
+    def test_a_stale_observation_time_is_caught(self) -> None:
+        snapshot = market()
+        packet = context(observed_at=NOW - dt.timedelta(days=1))
+        with pytest.raises(ValueError, match="observed_at"):
+            packet.verify_against(snapshot)
+
+    def test_every_disagreement_is_reported_not_just_the_first(self) -> None:
+        bad = market(spread_pips=Decimal("9.0"), high_impact_event_active=True,
+                     analog_sample_size=3)
+        packet = context(market_id=bad.checksum)
+        with pytest.raises(ValueError) as excinfo:
+            packet.verify_against(bad)
+        message = str(excinfo.value)
+        for field in ("spread_pips", "blackout_active", "analog_sample_size"):
+            assert field in message, f"{field} silently omitted from the disagreement list"
