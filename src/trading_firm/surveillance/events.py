@@ -103,3 +103,21 @@ class SurveillanceEvent(BaseModel):
             "payload_json": json.dumps(_canonical(self.payload), sort_keys=True),
             "payload_checksum": self.payload_checksum,
         }
+
+
+_INSERT = (
+    "INSERT INTO surveillance_events (event_id, event_type, schema_version, "
+    "event_time_utc, ingestion_time_utc, producer, instrument_scope, "
+    "correlation_id, configuration_version, data_quality, payload_json, "
+    "payload_checksum) VALUES (:event_id, :event_type, :schema_version, "
+    ":event_time_utc, :ingestion_time_utc, :producer, :instrument_scope, "
+    ":correlation_id, :configuration_version, :data_quality, :payload_json, "
+    ":payload_checksum)"
+)
+
+
+def record_event(conn, event: SurveillanceEvent) -> None:
+    """Append to the durable outbox (§30.6). The primary key makes replayed
+    ids a hard error rather than a silent duplicate — an event happened once."""
+    conn.execute(_INSERT, dict(event.to_row()))
+    conn.commit()
