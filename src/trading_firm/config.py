@@ -1,4 +1,4 @@
-"""Configuration schema and loader (Master Handoff v1.1.4 §24).
+"""Configuration schema and loader (governing spec §24).
 
 Every constitutional constant is a validated configuration value, not a
 scattered literal (§3.4). Validators enforce the invariants the spec states

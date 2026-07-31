@@ -1,4 +1,4 @@
-"""Configuration schema tests (Master Handoff v1.1.4 §21 'Configuration schema').
+"""Configuration schema tests (governing spec §21 'Configuration schema').
 
 The base config must load, and every constitutional invariant must be
 enforced by the schema — i.e., a config edited to contradict the

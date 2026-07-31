@@ -3,7 +3,7 @@
 A Claude Desktop extension (`.mcpb`) exposing **read-only** OANDA fxTrade
 **Practice** tools for the Claude London Trading Firm project.
 
-## Constitution constraints (Master Handoff v1.1.0)
+## Constitution constraints (governing spec §2, §17)
 
 - **No order tools.** §2 prohibits any LLM-facing order path. This server has
   zero order-placement/modification/cancellation tools; it is GET-only.

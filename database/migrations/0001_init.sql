@@ -1,4 +1,4 @@
--- 0001: core decision-trail entities (Master Handoff v1.1.3 §10.2, Phase 2 subset).
+-- 0001: core decision-trail entities (governing spec §10.2, Phase 2 subset).
 -- Timestamps are ISO-8601 UTC text; source timezone preserved where relevant (§10.3).
 
 CREATE TABLE IF NOT EXISTS configuration_versions (

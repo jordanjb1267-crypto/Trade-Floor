@@ -44,6 +44,13 @@ SUFFIXES = {".py", ".md", ".yaml", ".yml", ".json", ".sql", ".toml", ".example",
 
 REF = re.compile(r"§(\d+)(?:\.(\d+))?")
 
+# A citation naming a spec VERSION -- the words "Master Handoff" followed by a
+# semantic version. Distinct
+# from a §-reference: the section resolves fine while the version claim is false.
+VERSIONED_CITATION = re.compile(r"Master Handoff (v\d+\.\d+\.\d+)")
+# A file claiming to name the governing spec.
+GOVERNING_CLAIM = re.compile(r"Governing specification[:\s]+\S*?(CLAUDE_\S+?\.md)")
+
 
 def spec_sections(spec: str) -> tuple[set[str], int]:
     """Return ({"3", "3.2", ...}, number of §0 iron rules)."""
@@ -117,6 +124,56 @@ def main() -> int:
                         bad.append((rel, lineno, f"§{ref}", f"§0 has {rule_count} rules"))
                 elif ref not in sections:
                     bad.append((rel, lineno, f"§{ref}", "no such section in the governing spec"))
+
+    # --- stale spec-version pointers -----------------------------------------
+    # The §-checker cannot catch these: a versioned citation names a section
+    # section that resolves perfectly while naming a spec three versions dead.
+    # That is the same failure as the six agent files which passed CI for three
+    # versions pointing at v1.1.3 — a reference that resolves while the claim is
+    # false. Found in seven files on 2026-07-31, including
+    # src/trading_firm/__init__.py, which said "Governing specification:" and
+    # named the superseded v1.1.4.
+    current_version = re.search(r"_v(\d+\.\d+\.\d+)\.md$", GOVERNING.name)
+    current = f"v{current_version.group(1)}" if current_version else None
+    stale: list[tuple[str, int, str]] = []
+    for path in candidate_files():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for cited in VERSIONED_CITATION.findall(line):
+                if current and cited != current:
+                    why = f"cites 'Master Handoff {cited}', current is {current}"
+                    stale.append((rel, lineno, why))
+            for named in GOVERNING_CLAIM.findall(line):
+                if named != GOVERNING.name:
+                    stale.append((rel, lineno, f"claims the governing spec is {named}"))
+
+    # Paths this process cannot edit: §7.2/§7.3 protected files need
+    # OWNER_APPROVED_PROTECTED_EDIT, and .env* is read-blocked so a secret cannot
+    # be pulled into context. Drift there is real and must stay visible, but CI
+    # cannot be held red on a fix only the owner can apply — so it is reported
+    # every run and attributed, rather than suppressed or blocking.
+    owner_only = (".claude/hooks/", ".claude/settings", ".env.example")
+    blocking = [f for f in stale if not f[0].startswith(owner_only)]
+    for_owner = [f for f in stale if f[0].startswith(owner_only)]
+
+    if for_owner:
+        print(f"NOTE: {len(for_owner)} stale spec-version pointer(s) in owner-only paths")
+        for rel, lineno, why in for_owner:
+            print(f"  {rel}:{lineno}  {why}")
+        print("  These need OWNER_APPROVED_PROTECTED_EDIT=1 and a decision-log entry")
+        print("  (§7.2/§7.3). Not failing CI: the implementer cannot apply the fix.\n")
+
+    if blocking:
+        print(f"FAIL: {len(blocking)} stale spec-version pointer(s)\n")
+        for rel, lineno, why in blocking:
+            print(f"  {rel}:{lineno}  {why}")
+        print("\nThese resolve as §-references while naming a superseded spec. Cite the")
+        print("section without a version, or name the current governing document.")
+        return 1
 
     if bad:
         print(f"FAIL: {len(bad)} unresolved §-reference(s) of {checked} checked\n")
