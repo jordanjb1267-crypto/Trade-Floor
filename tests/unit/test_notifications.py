@@ -277,3 +277,85 @@ class TestAWellFormedValueOfTheWrongKindIsRejected:
             with pytest.raises(TelegramConfigError) as excinfo:
                 TelegramNotifier()
         assert "secret_bot_name" not in str(excinfo.value)
+
+
+class TestDiagnosisNamesTheRightCause:
+    """The three causes have completely different remedies: reach the host,
+    replace the token, or fix the destination.
+
+    Written after the first real preflight run reported "verify the token is
+    current" when the actual cause was a network policy denying
+    api.telegram.org — sending an operator to rotate a perfectly good
+    credential. credentials.py exists for the same failure on the broker side.
+    """
+
+    def _diagnose_with(self, configured, raised):
+        notifier = TelegramNotifier()
+        with mock.patch.object(tg.urllib.request, "urlopen", side_effect=raised):
+            return notifier.diagnose()
+
+    def test_a_network_failure_is_not_reported_as_a_credential_failure(
+        self, configured
+    ) -> None:
+        ok, reason = self._diagnose_with(
+            configured, tg.urllib.error.URLError("Tunnel connection failed: 403 Forbidden")
+        )
+        assert ok is False
+        assert "not reachable" in reason
+        assert "NETWORK result, not a credential one" in reason
+        assert "rotate" not in reason.lower()
+
+    def test_a_401_names_the_token(self, configured) -> None:
+        import io
+
+        ok, reason = self._diagnose_with(
+            configured,
+            tg.urllib.error.HTTPError(
+                "https://api.telegram.org/botX/sendMessage", 401, "Unauthorized", {},
+                io.BytesIO(b'{"ok":false,"description":"Unauthorized"}'),
+            ),
+        )
+        assert ok is False
+        assert "token is not valid" in reason
+
+    def test_a_400_names_the_destination_not_the_token(self, configured) -> None:
+        import io
+
+        ok, reason = self._diagnose_with(
+            configured,
+            tg.urllib.error.HTTPError(
+                "https://api.telegram.org/botX/sendMessage", 400, "Bad Request", {},
+                io.BytesIO(b'{"ok":false,"description":"Bad Request: chat not found"}'),
+            ),
+        )
+        assert ok is False
+        assert "chat not found" in reason
+        assert "the token works" in reason
+        assert "A bot cannot open a conversation with you" in reason
+
+    def test_no_diagnosis_leaks_the_token(self, configured) -> None:
+        import io
+
+        for raised in (
+            tg.urllib.error.URLError(f"proxy denied /bot{FAKE_TOKEN}/sendMessage"),
+            tg.urllib.error.HTTPError(
+                f"https://api.telegram.org/bot{FAKE_TOKEN}/sendMessage", 401, "x", {},
+                io.BytesIO(b'{"description":"Unauthorized"}'),
+            ),
+        ):
+            _, reason = self._diagnose_with(configured, raised)
+            assert FAKE_TOKEN not in reason
+
+    def test_success_reports_delivered(self, configured) -> None:
+        class _Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        notifier = TelegramNotifier()
+        with mock.patch.object(tg.urllib.request, "urlopen", return_value=_Response()):
+            assert notifier.diagnose() == (True, "delivered")

@@ -109,21 +109,14 @@ def main() -> int:
     if dry_run:
         print("\n  [SKIP] delivery — --dry-run")
     else:
-        delivered = notifier.send(
-            NotificationKind.SESSION_START_HEALTH,
-            "Preflight from verify_telegram.py. If you can read this, the §19 "
-            "notification path works. Reply /status to check the command surface.",
-        )
-        results.append(
-            report(
-                PASS if delivered else FAIL,
-                "test message delivered",
-                "check the chat"
-                if delivered
-                else "send failed — verify the token is current and the chat id is "
-                "the numeric id of a chat the bot can post to",
+        delivered, reason = notifier.diagnose()
+        results.append(report(PASS if delivered else FAIL, "test message delivered", reason))
+        if delivered:
+            notifier.send(
+                NotificationKind.SESSION_START_HEALTH,
+                "Preflight from verify_telegram.py. If you can read this, the §19 "
+                "notification path works. Reply /status to check the command surface.",
             )
-        )
 
     passed = sum(1 for r in results if r)
     print(f"\n{passed}/{len(results)} checks passed")

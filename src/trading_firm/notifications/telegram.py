@@ -320,6 +320,65 @@ class TelegramNotifier:
             # of its error messages.
             return False
 
+    def diagnose(self) -> tuple[bool, str]:
+        """Attempt one delivery and return (ok, a specific reason).
+
+        `send()` deliberately swallows everything, which is right for a running
+        session and useless for a preflight. This exists because the first real
+        run of `verify_telegram.py` reported "verify the token is current and
+        the chat id is..." when the actual cause was a network policy denying
+        api.telegram.org — sending an operator to rotate a perfectly good
+        credential.
+
+        `credentials.py` was written for exactly this failure on the broker side:
+        an error that is wrong in a way that sends someone to fix the wrong
+        thing costs more than no error at all. So the three causes are named
+        apart, because the remedies are completely different — reach the host,
+        replace the token, or fix the destination.
+
+        Telegram's error `description` is diagnostic and carries no secret, so
+        it is surfaced; everything still passes through `redact()` because the
+        URL that produced it does carry one.
+        """
+        payload = json.dumps({"chat_id": self._chat_id, "text": "preflight"}).encode()
+        request = urllib.request.Request(
+            self._url("sendMessage"),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                if 200 <= response.status < 300:
+                    return True, "delivered"
+                return False, redact(f"unexpected HTTP {response.status}")
+        except urllib.error.HTTPError as error:
+            body = ""
+            try:
+                body = json.loads(error.read(600).decode()).get("description", "")
+            except Exception:
+                pass
+            if error.code == 401:
+                return False, redact(
+                    f"401 Unauthorized — the bot token is not valid. It was revoked, "
+                    f"regenerated, or copied incompletely. {body}"
+                )
+            if error.code in (400, 403):
+                return False, redact(
+                    f"{error.code} — the token works but the destination does not: "
+                    f"{body or 'chat not found'}. Send the bot a message first, then "
+                    f"take message.chat.id from /getUpdates. A bot cannot open a "
+                    f"conversation with you."
+                )
+            return False, redact(f"HTTP {error.code}: {body}")
+        except (urllib.error.URLError, OSError, TimeoutError) as error:
+            return False, redact(
+                f"api.telegram.org is not reachable from this machine "
+                f"({type(error).__name__}). This is a NETWORK result, not a credential "
+                f"one — the token and chat id may both be correct. Check egress policy, "
+                f"proxy rules, or DNS before changing any credential."
+            )
+
     def describe_failure(self, error: BaseException) -> str:
         """Render an exception for a log, with any token removed (§17, §0.2)."""
         return redact(f"{type(error).__name__}: {error}")
