@@ -746,6 +746,73 @@ deliberate deviation from the §6 letter in service of §6's own instruction to
 "use the smallest number of high-quality agents that produces genuine
 specialization" and not to "create agents merely to simulate a large firm".
 
+**2026-07-30 · v2 Adoption Pass 2 delivered; adversarial review found 30
+defects in 3 of 5 modules.** All twelve workstreams shipped: Market State
+Packet with the A-2 market/firm split, the §6.2 independence protocol, the
+Arbiter, the specialist bench and context aggregation, the historical-analog
+engine, the experiment/multiple-testing ledger, the §11 adaptive policy
+manifest, the A-2 classification machinery and thesis ceiling, the nine agent
+files, end-to-end §21 acceptance tests, and the updated model-routing policy.
+Suite 305 -> 837.
+
+Five modules were built by parallel agents; each was paired with an independent
+refutation-default reviewer. **Three of three reviewed modules came back
+DEFECTIVE** — 30 findings, 4 critical, every one verified by execution or
+mutation rather than asserted. Two reviewers died on an account spend limit, so
+`analogs.py` and the nine agent files were reviewed directly instead; both are
+sound, and `analogs.py`'s §12.7 gate is the strongest control in the codebase
+(clearance requires an AdversarialReview record with reviewer != author, full
+coverage, and a decision-log reference, and the formatter re-checks the record
+so an `object.__setattr__` bypass of the flag still refuses).
+
+The findings share one shape, and it is worth naming because it will recur:
+**a guarantee asserted in a docstring that the code did not deliver.** A guard
+matching one name and called comprehensive. An invariant comparing three
+caller-supplied values to each other and called unrepresentable. A frozen model
+holding a mutable dict. A holdout documented as inspected-once and enforced by
+nothing. A `may_support_confirmation` property with no caller. In a codebase
+where the guards ARE the product, a guard that cannot fail is the most
+expensive thing in it, because it manufactures the confidence that stops anyone
+looking again.
+
+The most serious finding was against the A-2 guard itself — the control this
+amendment was ratified to create. It matched the single literal `FirmSnapshot`,
+and a reviewer defeated it by importing `AccountState` instead and making the
+significance threshold triple when `session_realized_loss > 0`: a firm losing
+money would need LESS evidence to call a result significant, and all 65 tests
+stayed green. Reproduced before fixing. The guard now lives once in
+`tests/a2_guard.py` over the whole firm-state vocabulary; it had been copied
+into five test files, which multiplied the blind spot rather than the
+protection. No live violation existed — the defect was that the guard would not
+have noticed one.
+
+Two process facts recorded because they change what "verified" means here.
+`scripts/check_spec_refs.py` was **never wired into CI**, while an earlier entry
+in this log claimed it "now fails CI on an unresolvable reference" — it had been
+run by hand throughout. And `check_spec_refs.py` structurally cannot catch a
+misattributed quote: it proves §N resolves to a real heading, not that the
+section says what the code claims. That gap let `bench.py` attribute two §1
+sentences to §6.3 with CI green, and it is the same shape as the six agent files
+that passed CI for three spec versions while pointing at v1.1.3. Both checkers
+now run in CI, and the new `scripts/check_spec_quotes.py` closes the attribution
+gap — it immediately found three more misattributions in `arbiter.py` and
+`bench.py`. That checker failed to catch its own motivating example twice before
+it worked (a word-count threshold, then docstring quote-pairing); writing a
+guard is no protection against writing it wrong.
+
+**Nothing was unlocked.** `live_allowed` is empty, no strategy status moved, no
+`risk_permissions` flag flipped, and `allowed_novelty_classes_live` is empty in
+the adaptive policy manifest. A-2 granted no permission, exactly as §29.0 said:
+the route to larger size runs through §12.5 promotion and the §12.6 thresholds
+and nowhere else.
+
+**Limits carried forward, not closed.** Pre-registration backdating is narrowed
+— the witness clock cannot detect it on a fresh ledger, and closing it needs an
+external witness. The A-2 and analog direction guards are denylists over the
+vocabulary this codebase uses. The model-routing policy is not machine-enforced
+and cannot be. Each is stated in the code that carries it rather than left for a
+future reader to discover.
+
 **Standing owner to-dos:** none outstanding. Implementer is building v2
 Adoption Pass 2 in the order set in `docs/design/2026-07-30-v2-pass-2-scope.md`
 part 5 (W1 packet, W8 adaptive policy manifest, then the agent layer). Owner-side

@@ -9,7 +9,12 @@ All §-references in this repo point there. When this file and the spec
 disagree, the spec wins.
 
 **Current status:** Phases 1–5 delivered (governance, deterministic core,
-research framework, broker sandbox, agent orchestration). Phase 4's practice
+research framework, broker sandbox, agent orchestration). The v2 adaptive layer
+(Pass 2) is complete: Market State Packet, senior-trader independence protocol,
+Arbiter, specialist bench, analog engine, experiment ledger, adaptive policy
+manifest, and end-to-end §21 acceptance tests. Three of five Pass 2 modules
+failed an independent adversarial review on first pass; all 30 findings are
+remediated (`docs/reviews/2026-07-30-pass-2-adversarial-review.md`). Phase 4's practice
 order-lifecycle run **passed on 2026-07-30** — 11/11 connection checks and 6/6
 lifecycle checks against fxTrade Practice, with the broker-held stop confirmed
 server-side and the account verified flat afterwards
@@ -64,7 +69,7 @@ logic changes.
    (see `.env.example`). The pre-write hook scans for credential patterns
    and cannot be overridden.
 6. **Audit everything.** Material decisions go to `governance/decision-log.md`;
-   spec changes bump the version and add a §29.1 changelist row.
+   spec changes bump the version and add a §29 changelist row.
 7. **Ask the owner only for genuinely blocking decisions** (§0.12).
 
 ## Protected paths (owner approval required — §7.2/§7.3)
@@ -84,7 +89,11 @@ pre-edit hook. Override only with explicit owner sign-off
 - `tests/` — unit/integration/replay/broker_sandbox/failure_injection/acceptance
 - `scripts/` — operational tooling (e.g., `verify_oanda_demo.py`)
 - `mcp/oanda-practice/` — read-only OANDA practice MCP bundle (no order tools by design)
-- `.claude/agents/` — the six firm agents (§6): firm-governor, chief-quant-validation, chief-risk-officer, session-strategist, context-analyst, learning-audit-director
+- `.claude/agents/` — the nine firm agents (§6): senior-trader-alpha, senior-trader-beta,
+  market-opportunity-arbiter, firm-governor, chief-quant-validation, chief-risk-officer,
+  session-strategist, context-analyst, learning-audit-director. Nine rather than §6's
+  twenty-one is a deliberate owner decision (2026-07-30) serving §6's own instruction to
+  "use the smallest number of high-quality agents that produces genuine specialization".
 
 ## Development
 
@@ -92,7 +101,14 @@ pre-edit hook. Override only with explicit owner sign-off
 pip install -e ".[dev]"   # or: uv pip install -e ".[dev]"
 pytest                    # must pass before any commit (§7.3)
 ruff check src tests scripts
+python3 scripts/check_spec_refs.py     # every §N resolves to a real heading
+python3 scripts/check_spec_quotes.py   # quoted text is IN the section it cites
 ```
+
+All four run in CI. The two §-checkers are separate on purpose: the first proves
+a citation resolves, the second proves the section says what the code claims.
+A reference that resolves while the claim is false is the failure mode that let
+six agent files sit three spec versions stale with CI green.
 
 - Python ≥3.11 (3.12 preferred, §23). Pydantic for schemas; SQLite/WAL later.
 - Config changes: edit YAML + keep `tests/unit/test_config.py` green. The
