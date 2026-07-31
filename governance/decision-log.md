@@ -813,6 +813,46 @@ vocabulary this codebase uses. The model-routing policy is not machine-enforced
 and cannot be. Each is stated in the code that carries it rather than left for a
 future reader to discover.
 
+**2026-07-31 · Two parallel Telegram implementations consolidated into one
+(§18/§19).** Two sessions, unable to see each other's work, built the owner
+notification path twice: `notifications/` on this branch (typed §19
+notification set, halt-only remote-command surface with an import-time guard,
+chat-id/token shape validation, cause-separated failure diagnosis) and
+`notify/` on PR #18 from a fresh container (stdlib transport with injectable
+test seam, bounded deterministic retry, 4096-char truncation, secret-scrubbed
+results — and the end-to-end evidence: a real message delivered, message_id=8,
+HTTP 200, `docs/audits/2026-07-31-telegram-notify-e2e.md`).
+
+Consolidated by role rather than by picking a winner. `notify/telegram.py`
+keeps the transport role because it is the code the e2e evidence describes;
+its transport paths are byte-identical to the verified commit. The policy
+layer moved to `notify/surface.py`; the duplicate transport in
+`notifications/` is deleted, because two code paths to the same API drift
+apart silently and the §17 guarantees only hold on the one that is
+maintained. PR #18's commit is merged into this branch unchanged, so its
+authorship and evidence survive in history and GitHub will mark the PR merged
+when this branch lands.
+
+One modification to the verified module, stated rather than slipped in:
+`preflight()` gains the shape checks. The transport's generic credential
+check passed a bot's @username configured as the chat id — the misconfiguration
+actually present in this session's environment, not a hypothetical — and a
+runtime caller records the resulting 400 as a failed NotifyResult and moves
+on, which is a §19 risk-halt alert dying silently. Shape validation is
+pre-I/O, so the delivery evidence is unaffected.
+
+Also carried over from the duplicate before deletion: the remedy mapping that
+distinguishes an unreachable host from a bad token from a wrong destination,
+added after this session's first preflight run told the operator to check
+credentials for what was an egress-policy denial. It lives in the policy layer
+(`remedy_for`), so the mapping can improve without touching verified transport.
+
+The canonical verifier is `scripts/verify_telegram.py` (strict preflight,
+§19 surface assertions, getMe, one real send); `verify_telegram_notify.py`
+remains as a forwarding stub because the audit instructs the operator to
+re-run it on the trading laptop, and an audit whose instruction dangles
+teaches people to stop following audits.
+
 **Standing owner to-dos:** none outstanding. Implementer is building v2
 Adoption Pass 2 in the order set in `docs/design/2026-07-30-v2-pass-2-scope.md`
 part 5 (W1 packet, W8 adaptive policy manifest, then the agent layer). Owner-side

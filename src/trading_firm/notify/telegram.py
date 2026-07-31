@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -47,6 +48,9 @@ from trading_firm.execution.credentials import CredentialError, validate_credent
 
 BOT_TOKEN_VAR = "TELEGRAM_BOT_TOKEN"
 CHAT_ID_VAR = "TELEGRAM_CHAT_ID"
+
+_TOKEN_SHAPE = re.compile(r"^\d{6,12}:[A-Za-z0-9_-]{30,}$")
+_CHAT_ID_SHAPE = re.compile(r"^(-?\d+|@[A-Za-z][A-Za-z0-9_]{4,})$")
 
 API_HOST = "api.telegram.org"  # notification host only — no broker host may appear here
 TIMEOUT_SECONDS = 15.0
@@ -91,10 +95,25 @@ def preflight() -> tuple[str, str]:
     """
     token = validate_credential(BOT_TOKEN_VAR, os.environ.get(BOT_TOKEN_VAR))
     chat_id = validate_credential(CHAT_ID_VAR, os.environ.get(CHAT_ID_VAR))
-    if ":" not in token:
+    if not _TOKEN_SHAPE.match(token):
         raise CredentialError(
-            f"{BOT_TOKEN_VAR} lacks the ':' separator every bot token has, so it "
-            f"cannot be a Telegram bot token (§17). Nothing was sent."
+            f"{BOT_TOKEN_VAR} is not shaped like a Telegram bot token "
+            f"(`<digits>:<secret>` from BotFather), so it cannot be one (§17). "
+            f"Nothing was sent."
+        )
+    # A well-formed value of the wrong KIND is the observed failure, not a
+    # hypothetical: a real environment carried the bot's @username here. It
+    # passes every generic check and can never receive a message — Telegram
+    # answers "chat not found" at send time, which a runtime caller records as
+    # a failed NotifyResult and moves past, so a §19 risk-halt alert would die
+    # silently. Only an integer (negative for groups) or an @channelusername
+    # can be a destination; refuse everything else before any I/O.
+    if not _CHAT_ID_SHAPE.match(chat_id):
+        raise CredentialError(
+            f"{CHAT_ID_VAR} must be the NUMERIC chat id (negative for a group) or "
+            f"@channelusername for a public channel. A bot's username is not a chat "
+            f"id and cannot receive messages. Message the bot, then read "
+            f"message.chat.id from /getUpdates (§19). Nothing was sent."
         )
     return token, chat_id
 
