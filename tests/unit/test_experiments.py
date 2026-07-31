@@ -1020,3 +1020,106 @@ class TestHonestDenominator:
             known_coverage_holes=("three UK bank holidays",),
         )
         assert sample.sessions == 27
+
+
+def _sample(sample_id: str, role: SampleRole) -> Sample:
+    return Sample(
+        sample_id=sample_id,
+        description=f"{role.value} sample",
+        instrument="GBP_USD",
+        role=role,
+        first_session=dt.date(2026, 6, 4),
+        last_session=dt.date(2026, 7, 15),
+        sessions=30,
+    )
+
+
+class TestHoldoutIsInspectedOnceEver:
+    """§12.4: "immutable holdout periods". Documented in SampleRole, enforced
+    by nothing — five successive writes were accepted, which is mining the
+    holdout until something clears."""
+
+    @staticmethod
+    def _ledger() -> ExperimentLedger:
+        ledger = ExperimentLedger()
+        ledger.add_sample(_sample("holdout", SampleRole.HOLDOUT))
+        return ledger
+
+    def test_the_first_inspection_is_allowed(self) -> None:
+        ledger = self._ledger()
+        ledger.record_post_hoc(
+            "first", "one look", "holdout", "profit_factor",
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.20"),
+        )
+        assert ledger.tests_recorded("holdout") == 1
+
+    def test_a_second_inspection_is_refused(self) -> None:
+        ledger = self._ledger()
+        ledger.record_post_hoc(
+            "first", "one look", "holdout", "profit_factor",
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.20"),
+        )
+        with pytest.raises(ValueError, match="inspected once, ever"):
+            ledger.record_post_hoc(
+                "second", "another look", "holdout", "profit_factor",
+                outcome=ExperimentOutcome.SUPPORTED,
+                tested_at=dt.datetime(2026, 7, 21, tzinfo=UTC), p_value=Decimal("0.04"),
+            )
+
+    def test_the_refusal_names_what_already_spent_it(self) -> None:
+        ledger = self._ledger()
+        ledger.record_post_hoc(
+            "first", "one look", "holdout", "profit_factor",
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.20"),
+        )
+        with pytest.raises(ValueError, match="first"):
+            ledger.record_post_hoc(
+                "second", "another look", "holdout", "profit_factor",
+                outcome=ExperimentOutcome.SUPPORTED,
+                tested_at=dt.datetime(2026, 7, 21, tzinfo=UTC), p_value=Decimal("0.04"),
+            )
+
+
+class TestConfirmationRequiresPreRegistration:
+    """§12.4: `may_support_confirmation` had no caller in src/, so a post-hoc
+    hypothesis could be recorded as its own passing confirmation."""
+
+    @staticmethod
+    def _ledger() -> ExperimentLedger:
+        ledger = ExperimentLedger()
+        ledger.add_sample(_sample("confirm", SampleRole.CONFIRMATION))
+        return ledger
+
+    def test_a_post_hoc_hypothesis_cannot_be_confirmed(self) -> None:
+        with pytest.raises(ValueError, match="confirmation of itself"):
+            self._ledger().record_post_hoc(
+                "fitted", "noticed in the data", "confirm", "profit_factor",
+                outcome=ExperimentOutcome.SUPPORTED,
+                tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.001"),
+            )
+
+    def test_a_pre_registered_hypothesis_can_be(self) -> None:
+        ledger = self._ledger()
+        ledger.register(
+            "planned", "written down first", "confirm", "profit_factor",
+            dt.datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        result = ledger.record_result(
+            "planned", ExperimentOutcome.SUPPORTED,
+            dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.001"),
+        )
+        assert result.registration is Registration.PRE_REGISTERED
+
+    def test_discovery_samples_still_accept_post_hoc_work(self) -> None:
+        # §12.4 separates the samples precisely so discovery stays free.
+        ledger = ExperimentLedger()
+        ledger.add_sample(_sample("discover", SampleRole.DISCOVERY))
+        e = ledger.record_post_hoc(
+            "noticed", "found while looking", "discover", "profit_factor",
+            outcome=ExperimentOutcome.SUPPORTED,
+            tested_at=dt.datetime(2026, 7, 20, tzinfo=UTC), p_value=Decimal("0.03"),
+        )
+        assert e.registration is Registration.POST_HOC

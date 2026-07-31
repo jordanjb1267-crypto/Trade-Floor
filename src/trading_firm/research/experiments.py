@@ -434,7 +434,6 @@ class ExperimentLedger:
         otherwise the honest paths are `register()` then `record_result()`, or
         `record_post_hoc()`.
         """
-        self.sample(experiment.sample_id)  # raises if undeclared
         if experiment.hypothesis_id in self._experiments:
             raise ValueError(
                 f"hypothesis {experiment.hypothesis_id!r} is already in the ledger: reusing an "
@@ -453,6 +452,44 @@ class ExperimentLedger:
                 f"witnessed (§12.4, §0.11). Use register() then record_result(), or "
                 f"record_post_hoc()."
             )
+        sample = self.sample(experiment.sample_id)
+
+        # §12.4 confirmation samples. `may_support_confirmation` existed as a
+        # property with no caller anywhere in src/, so a post-hoc hypothesis
+        # could be recorded as a passing confirmation — the exact substitution
+        # §12.4 separates the samples to prevent.
+        if (
+            sample.role is SampleRole.CONFIRMATION
+            and experiment.outcome.consumed_the_sample
+            and not experiment.registration.may_support_confirmation
+        ):
+            raise ValueError(
+                f"{experiment.hypothesis_id}: a {experiment.registration.value} hypothesis "
+                f"cannot be confirmed against confirmation sample "
+                f"{experiment.sample_id!r}. §12.4 requires a pre-registered record BEFORE "
+                f"confirmation testing; a hypothesis fitted to the data can motivate the "
+                f"next experiment but can never be the confirmation of itself"
+            )
+
+        # §12.4 immutable holdout: "inspected once, ever". Documented in
+        # SampleRole and enforced by nothing — five successive writes to a
+        # holdout were accepted, which is mining it until something clears.
+        if sample.role is SampleRole.HOLDOUT and experiment.outcome.consumed_the_sample:
+            already = [
+                e
+                for e in self.experiments(experiment.sample_id)
+                if e.outcome.consumed_the_sample
+            ]
+            if already:
+                spent = ", ".join(sorted(e.hypothesis_id for e in already))
+                raise ValueError(
+                    f"{experiment.hypothesis_id}: holdout sample "
+                    f"{experiment.sample_id!r} has already been inspected by [{spent}]. "
+                    f"§12.4 makes a holdout immutable and inspected once, ever — a second "
+                    f"look is no longer a holdout, and repeated looks are the overfitting "
+                    f"the holdout exists to detect"
+                )
+
         stored = (
             experiment
             if cited == experiment.provenance
