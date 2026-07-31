@@ -15,6 +15,60 @@ record, or a §12.6 evidence count until its code paths have passed this review.
 The publication gate in that module is not a formality pending review — it is the
 only thing standing in for the review that did not happen.
 
+## Disposition (2026-07-30, after remediation)
+
+All 4 critical and all 8 major findings are fixed, each with a regression test
+that fails without the fix. The notable minors are fixed too. Remaining open
+items are listed at the end.
+
+| # | Finding | Disposition |
+|---|---|---|
+| C1 | A-2 guard matched one literal name; a live violation passed 65 tests | Fixed — `tests/a2_guard.py`, whole firm-state vocabulary, one shared copy |
+| C2 | `bench.py` specialist declared its own accountability domain | Fixed — domain derived from `BENCH`, field removed |
+| C3 | `arbiter.py` arbitrated evidence unbound to the analysed packet | Fixed — ledger carries `market_id`, `verify_market()` fails closed |
+| C4 | `experiments.py` pre-registration assertable by backdating | Fixed — witness clock; **limit stated and tested, not closed** |
+| M1 | BH discarded variant multiplicity (19-variant sweep called a discovery) | Fixed — family size is `tests_recorded` |
+| M2 | `RegimeReading.measures` mutable inside a frozen model | Fixed — frozen `Mapping` over a copy |
+| M3 | Context report could contradict the packet it cites | Fixed — all four restated values checked |
+| M4 | `Agreement` was a caller-supplied Exceptional | Fixed — recomputed in `compare()`, mismatch refused |
+| M5 | No-averaging invariant compared caller values to each other | Fixed — anchored to the thesis's own claim |
+| M6 | Impossible sample denominator (31 sessions, 30 weekdays) | Fixed — weekday-bound validator; exemplar corrected |
+| M7 | Immutable holdout was advisory; five writes accepted | Fixed — inspected once, ever |
+| M8 | `may_support_confirmation` had no caller | Fixed — enforced in `add()` |
+| m1 | Arbiter invariance loop was vacuous | Fixed — replaced with a test pinning why |
+| m2 | Frozen audit records held live lists | Fixed — coerced in `__post_init__` |
+| m3 | Float p-values coerced silently | Fixed — refused |
+| m4 | Two spec quotes attributed to §6.3, actually §1 | Fixed — re-attributed |
+
+### Still open
+
+- **`analogs.py` (W6) and the nine agent files (W9) remain unreviewed.** Both
+  reviewers died on a spend limit. `analogs.py` is research code, so §12.7/A-1
+  binds: no number it produces may enter a validation report, a promotion
+  record, or a §12.6 evidence count. Its publication gate is standing in for a
+  review that has not happened.
+- **Pre-registration backdating is narrowed, not closed.** The witness clock
+  detects a registration dated behind events the ledger has already seen; a
+  fresh ledger cannot detect one at all. Closing it needs an external witness —
+  a commit hash or a signed timestamp — which is outside this module.
+- **A few minors are deliberately not fixed**, chiefly dead validator branches
+  and the arbiter's fixed alpha/beta tie-break convention. The tie-break is
+  documented and emitted as a reason string, so a systematic lean is detectable
+  in post-session review (§6.6) rather than invisible; changing it to a
+  no-trade would be more conservative but §6.1 asks the Arbiter to decide, and
+  two equally-evidenced agreeing theses plainly deserve risk review.
+
+### What the pattern was
+
+Eleven of the sixteen fixed findings are the same mistake in different
+clothing: **a guarantee asserted in a docstring that the code did not deliver.**
+A guard matching one name and called comprehensive. An invariant comparing
+three caller-supplied values to each other and called unrepresentable. A frozen
+model holding a mutable dict. A holdout documented as inspected-once and
+enforced by nothing. In a codebase where the guards *are* the product, a guard
+that cannot fail is the most expensive thing in it, because it manufactures the
+confidence that stops anyone looking again.
+
 ## Verdicts
 
 | Module | Verdict | Critical | Major | Minor |
