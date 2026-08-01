@@ -1,0 +1,34 @@
+{
+  "mode": "observe_only_research_fixture",
+  "instrument": "GBP_USD",
+  "session_date": "2026-07-29",
+  "as_of_london": "08:30",
+  "market_state_id": "32bd773feb8340cd68d0c966338e6458249fcbd1fd6df2e3e1c7c153d9592351",
+  "session_phase": "ACTIVE",
+  "regime": {
+    "intraday": "COMPRESSING",
+    "daily": "MEAN_REVERTING"
+  },
+  "structure_state": "inside_reference_range",
+  "liquidity": "undisturbed",
+  "spread_state": "normal",
+  "data_quality": "DEGRADED",
+  "missing_components": [
+    "calendar",
+    "cross_market",
+    "news"
+  ],
+  "material_changes": [
+    "first_state_of_session"
+  ],
+  "alerts": [
+    {
+      "severity": "INFO",
+      "what_changed": "first_state_of_session",
+      "would_emit": true,
+      "reason": "new alert content"
+    }
+  ],
+  "orders_placed": 0,
+  "note": "observe-only: no order path exists from this process (\u00a730.2)"
+}

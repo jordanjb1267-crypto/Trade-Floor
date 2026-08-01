@@ -162,6 +162,72 @@ class TestStopping:
         assert harness.sent == []
 
 
+class TestSweepIsObservabilityOnly:
+    """§30.9: the surveillance sweep rides the evaluation boundaries like the
+    heartbeat rides the loop — injected, optional, advisory. Default None is
+    the pre-amendment supervisor, byte for byte."""
+
+    def test_reports_identical_with_and_without_an_explicit_none(
+        self, clock, tmp_path
+    ) -> None:
+        legacy = Harness(clock, tmp_path / "a")
+        legacy.run_day()
+        explicit = Harness(clock, tmp_path / "b")
+        explicit.supervisor._sweep = None
+        explicit.run_day()
+        a = (tmp_path / "a" / f"{DAY}-session.json").read_bytes()
+        b = (tmp_path / "b" / f"{DAY}-session.json").read_bytes()
+        assert a == b
+
+    def test_the_sweep_runs_on_the_two_evaluation_boundaries_only(
+        self, clock, tmp_path
+    ) -> None:
+        calls: list[str] = []
+        harness = Harness(clock, tmp_path)
+        harness.supervisor._sweep = lambda scheduled: calls.append(
+            scheduled.event.value
+        ) or "ok"
+        harness.run_day()
+        assert calls == ["briefing", "activation"]
+        report = json.loads((tmp_path / f"{DAY}-session.json").read_text())
+        sweep_notes = [e for e in report["events"] if e["outcome"].startswith("sweep:")]
+        assert len(sweep_notes) == 2
+
+    def test_a_degraded_day_withholds_the_sweep(self, clock, tmp_path) -> None:
+        def down() -> HealthReport:
+            raise ConnectionError("practice host unreachable")
+
+        calls: list[str] = []
+        harness = Harness(clock, tmp_path, probe=down)
+        harness.supervisor._sweep = lambda scheduled: calls.append("x") or "ok"
+        harness.run_day()
+        assert calls == [], "a degraded day withholds surveillance exactly as it "
+        "withholds evaluation (§0.10)"
+
+    def test_a_raising_sweep_is_contained_and_recorded(self, clock, tmp_path) -> None:
+        def explode(scheduled):
+            raise OSError("database is locked")
+
+        harness = Harness(clock, tmp_path)
+        harness.supervisor._sweep = explode
+        harness.run_day()  # does not raise
+        report = json.loads((tmp_path / f"{DAY}-session.json").read_text())
+        contained = [
+            e for e in report["events"] if "sweep FAILED (contained)" in e["outcome"]
+        ]
+        assert len(contained) == 2
+
+    def test_the_sweep_sends_nothing_itself(self, clock, tmp_path) -> None:
+        harness = Harness(clock, tmp_path)
+        harness.supervisor._sweep = lambda scheduled: "ok"
+        harness.run_day()
+        kinds = [kind for kind, _ in harness.sent]
+        assert kinds == [
+            NotificationKind.SESSION_START_HEALTH,
+            NotificationKind.DAILY_SESSION_REPORT,
+        ], "the sweep returns a note; delivery belongs to the coordinator's gate"
+
+
 class TestHeartbeatIsObservabilityOnly:
     """§18 liveness. The heartbeat must be able to fail, be absent, or be slow
     without altering a single trading decision — it exists to observe the loop,
