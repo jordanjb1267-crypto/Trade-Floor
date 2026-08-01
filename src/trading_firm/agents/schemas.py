@@ -226,6 +226,103 @@ class PostSessionReport(_StrictModel):
     challenger_hypotheses: list[ChallengerHypothesis]
 
 
+# ------------------------------------------------- surveillance agents (§30)
+
+
+class SurveillanceOverallState(enum.StrEnum):
+    NORMAL = "NORMAL"
+    MATERIAL_CHANGE = "MATERIAL_CHANGE"
+    DEGRADED = "DEGRADED"
+    CRITICAL = "CRITICAL"
+
+
+class SurveillanceSituationReport(_StrictModel):
+    """Technical Surveillance Lead output (§30.13): a concise,
+    evidence-grounded current-state report bound to one Market State Object."""
+
+    report_id: str
+    market_state_id: str
+    agent_id: str
+    agent_version: str
+    generated_at_utc: dt.datetime
+    overall_state: SurveillanceOverallState
+    material_changes: list[str]
+    active_market_drivers: list[str]
+    technical_observations: list[str]
+    macro_observations: list[str]
+    news_observations: list[str]
+    cross_market_observations: list[str]
+    contradictions: list[str]
+    data_limitations: list[str]
+    specialists_to_consult: list[str]
+    escalation_required: bool
+    expiration_utc: dt.datetime
+
+    _aware_generated = field_validator("generated_at_utc")(_require_aware)
+    _aware_expiry = field_validator("expiration_utc")(_require_aware)
+
+
+class OpportunityAlert(_StrictModel):
+    """Opportunity Alert Agent output (§30.13).
+
+    `trade_direction` is annotated `None` — the same move as TierAdjustment's
+    `le=0`: §30.13 says trade_direction must remain null at the
+    surveillance-alert layer, and here a non-null direction is a validation
+    error rather than a review finding. An alert says what changed, never
+    what to do about it (§30.3.I: no BUY or SELL instructions).
+    """
+
+    alert_id: str
+    market_state_id: str
+    severity: Literal["INFO", "WATCH", "MATERIAL", "CRITICAL"]
+    instrument_ids: list[str]
+    change_type: str
+    what_changed: str
+    supporting_observation_ids: list[str]
+    conflicting_observation_ids: list[str]
+    data_quality_status: str
+    suggested_recipients: list[str]
+    trade_direction: None = None
+    expires_at_utc: dt.datetime
+
+    _aware_expiry = field_validator("expires_at_utc")(_require_aware)
+
+
+class NewsRelevanceReview(_StrictModel):
+    """News Verification and Relevance Agent output (§30.13). The
+    recommended states are all restrictive or neutral — there is no
+    'trade this news' member to output."""
+
+    review_id: str
+    news_item_id: str
+    verification_state: Literal[
+        "UNVERIFIED", "SINGLE_SOURCE", "CORROBORATED", "OFFICIAL_SOURCE",
+        "CONFLICTING", "CORRECTED", "RETRACTED",
+    ]
+    event_time_utc: dt.datetime | None = None
+    publication_time_utc: dt.datetime
+    potentially_affected_instruments: list[str]
+    materiality: Literal["NONE", "LOW", "MEDIUM", "HIGH", "UNKNOWN"]
+    already_known_or_recirculated: bool
+    conflicting_facts: list[str]
+    pricing_assessment: Literal[
+        "UNKNOWN", "POSSIBLY_PRICED", "REACTION_ONGOING", "NOT_OBSERVED"
+    ]
+    recommended_state: Literal["IGNORE", "WATCH", "ESCALATE", "PAUSE_NEW_ENTRIES"]
+
+    _aware_published = field_validator("publication_time_utc")(_require_aware)
+
+    @field_validator("event_time_utc")
+    @classmethod
+    def _aware_event_or_none(cls, value: dt.datetime | None) -> dt.datetime | None:
+        return None if value is None else _require_aware(value)
+
+    @property
+    def can_support_material_alert(self) -> bool:
+        """§30.8: an unverified item cannot drive a MATERIAL alert."""
+        return self.verification_state in ("CORROBORATED", "OFFICIAL_SOURCE")
+
+
 # ------------------------------------------------------------ validation gate
 
 _SCHEMAS = {
@@ -234,6 +331,9 @@ _SCHEMAS = {
     "cro_verdict": CroVerdict,
     "approval_card": ApprovalCard,
     "post_session_report": PostSessionReport,
+    "surveillance_situation_report": SurveillanceSituationReport,
+    "opportunity_alert": OpportunityAlert,
+    "news_relevance_review": NewsRelevanceReview,
 }
 
 

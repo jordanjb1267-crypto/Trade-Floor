@@ -35,6 +35,27 @@ extended — see "What changed and why" below.
 | `context-analyst` | **Frontier** | Produces the evidence everything else reasons from |
 | `session-strategist` | **Frontier** | Its REJECT surfaces — see below |
 
+## Surveillance division (§30.3, A-3 — added 2026-07-31)
+
+All ten surveillance roles route **Frontier** initially, under rule 5 below:
+none has recorded real-session agreement evidence yet, and until it exists a
+cheaper model's divergence would land on exactly the unusual sessions that
+matter. Two are additionally not down-routable in principle:
+
+| Agent | Tier | Why |
+|---|---|---|
+| `technical-surveillance-lead` | **Frontier** | §30.15 names it for material events |
+| `news-verification-relevance` | **Frontier** | Its `PAUSE_NEW_ENTRIES`/`IGNORE` output is rejection-adjacent — rule 5's first condition fails permanently |
+| `opportunity-alert-agent` | **Frontier** | A missed material change is a missed rejection's twin |
+| `position-contradiction-monitor` | **Frontier** | Escalation quality is position protection (§30.10) |
+| the six domain monitors | **Frontier** | Rule 5: no recorded-sample agreement evidence exists |
+
+§30.15's deterministic-first policy is the real cost control and is already
+structural: extraction, normalization, dedup, severity, and throttling are
+deterministic code, and the §30.15 invocation budgets bound what reaches any
+model at all. Down-routing a monitor later follows rule 5 exactly — recorded
+agreement on real sessions, decision-log entry — not a cost hunch.
+
 ## What changed and why
 
 The previous table routed "pre-session strategist/context analysis" to

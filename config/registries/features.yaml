@@ -1,0 +1,237 @@
+# Feature metadata registry (§30.7) — the existing registry, extended.
+# One record per approved feature id; the flat lists in firm.yaml and the
+# adaptive policy manifest are validated views of this file (CI-enforced).
+# New calculations begin as research and cannot affect live decisions.
+feature_registry:
+  version: 1.0.0
+  features:
+    - feature_id: session_features_v1.asian_high
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: price
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Decimal price level of the Asian-session high.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.asian_low
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: price
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Decimal price level of the Asian-session low.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.asian_width_pips
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: pips
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Asian range width in pips.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.asian_bar_count
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: count
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Bars covering the Asian window (completeness).
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.pre_london_range_pips
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: pips
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Pre-London window range in pips.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.compression_ratio
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: ratio
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Pre-London range over Asian range.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.prior_session_high
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: price
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Prior London-window high.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: session_features_v1.prior_session_low
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_asian_window, m5_bars_pre_london_window]
+      lookback_requirements: {window: 'asian 00:00-07:00 London + pre-London 07:00-08:00'}
+      output_type: price
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Prior London-window low.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: structure_features_v1.prior_window_open
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_prior_london_window]
+      lookback_requirements: {window: 'prior activation->flatten window, <=5 day walk-back'}
+      output_type: price
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Open of the nearest fully covered prior London window.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: structure_features_v1.prior_window_close
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_prior_london_window]
+      lookback_requirements: {window: 'prior activation->flatten window, <=5 day walk-back'}
+      output_type: price
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Close of the nearest fully covered prior London window.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null
+
+    - feature_id: structure_features_v1.net_move_pips
+      status: research
+      asset_classes: [FX_SPOT]
+      instruments: [GBP_USD, EUR_USD]
+      timeframes: [M5]
+      calculation_module: trading_firm.features.engine
+      required_inputs: [m5_bars_prior_london_window]
+      lookback_requirements: {window: 'prior activation->flatten window, <=5 day walk-back'}
+      output_type: signed_pips
+      null_behavior: absent_when_window_uncovered_fail_closed
+      warmup_behavior: requires_full_window_coverage
+      freshness_policy: recomputed_per_session_at_boundary
+      purpose: >
+        Signed prior-window net move; positive = bullish.
+      known_failure_modes:
+        - "partial window coverage (handled: fail closed, feature absent)"
+        - "holiday or weekend gap in bars (handled: absent or walk-back)"
+      leakage_review_status: not_reviewed
+      validation_report_ids: []
+      owner_approval_id: null

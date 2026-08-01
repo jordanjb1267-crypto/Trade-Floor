@@ -49,7 +49,7 @@ class TestSqlite:
         conn = connect(tmp_path / "firm.db")
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         first = apply_migrations(conn)
-        assert first == ["0001_init.sql"]
+        assert first == ["0001_init.sql", "0002_surveillance.sql"]
         assert apply_migrations(conn) == []  # idempotent
 
     def test_decision_trail_roundtrip(self, tmp_path: Path) -> None:

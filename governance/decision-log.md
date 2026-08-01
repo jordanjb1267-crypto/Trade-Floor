@@ -1011,3 +1011,92 @@ credential, `Read(.env)` and `Read(.env.*)` remain denied in
 `.claude/settings.json`, and `live_allowed` remains empty everywhere. The hook
 remains fast feedback, not the security boundary — OS permissions and startup
 hash verification are the enforcement layers (§7.3, §17).
+
+**2026-07-31 · GMIS-001 ratified: the Global Market Intelligence and
+Surveillance Division is adopted as amendment A-3, targeting spec v2.3.0.**
+The owner uploaded an additive implementation handoff ("Global Market
+Intelligence and Surveillance Division", amendment ID GMIS-001, its own
+version 2.1.0) and instructed: "we made an oversight and i would like to add
+these agents." The document is preserved verbatim at
+`docs/spec/CLAUDE_ADDITIVE_HANDOFF_GLOBAL_MARKET_INTELLIGENCE_SURVEILLANCE_v2.1.0.md`
+(SHA-256 `36e72f8e4b30b77c3bb0eebc1fe6467cf01a0a669a920010a60fa9c57be36bbe`).
+It adds ten surveillance agent roles, a versioned Market State Object, a
+source registry, an event/alert architecture, thesis monitoring plans, and
+options-ready boundaries — everything behind `surveillance.enabled: false`,
+observe-only, additive-only by its own §0.2 preservation rules.
+
+Adoption mechanics follow the A-1/A-2 precedent exactly: one amendment, one
+spec version, one new file. The document's own section numbering is never
+citable from repo code — it targets a spec filename that does not exist here
+and its internal §-numbers would silently mis-resolve against the governing
+spec (its §4 would read as the capital-tier system), which is the precise
+failure mode the two §-checkers were built to close. Its normative content
+therefore lands as new section §30 of Master Handoff v2.3.0, and code cites
+§30.x only. The uploaded document itself lives in `docs/spec/`, which both
+checkers deliberately skip.
+
+Owner decisions recorded this session, each asked and answered explicitly:
+(1) **Roster.** All ten agents land as separate role files — asked again
+after the review found that four of the ten re-split roles consolidated
+into `context-analyst` on 2026-07-30; the owner confirmed. The roster
+becomes nineteen, and the boundary is documented in both places:
+context-analyst owns the pre-session context packet, the monitors own
+intra-session surveillance. This supersedes the nine-file roster decision
+by explicit owner choice, not by drift. (2) **Phone alerts are severe-only.**
+Only MATERIAL and CRITICAL surveillance alerts may reach the Telegram
+surface; INFO and WATCH stay in the local event log and the daily report.
+(3) **Options scaffolding is prose plus asset-class-neutral fields.** No
+stub modules for a broker (OANDA US, spot-FX RFED) that cannot trade
+options; the reserved boundaries and the nine future options agents are
+documented in §30, and a future options amendment defines everything else.
+(4) **Branch.** The build lands on
+`claude/add-global-market-intelligence-surveillance` with its own draft PR,
+so the open supervisor PR is not silently changed by seventy-five new files.
+
+Two conflicts were resolved against the amendment text in favour of ratified
+protections, under the amendment's own instruction to adapt to the existing
+architecture "without weakening its controls": the open-position
+contradiction packet it places inside the senior traders' first-pass packet
+is carried post-entry on the firm side instead, because A-2 makes firm state
+unreachable from classification as a type constraint; and its Chicago
+control-timezone framing yields to the London anchoring of C-2 — no naive
+local-time string enters any immutable object, and briefing checkpoints bind
+to the existing session boundaries. The Phase A audit required by the
+amendment's §22 — all fifteen items — is delivered at
+`docs/audits/2026-07-31-gmis-phase-a-audit.md` before any production code.
+
+Scope limits, stated rather than implied: ratification unlocks nothing. All
+surveillance flags ship false, every influence flag is false,
+`live_allowed` remains empty everywhere, the Telegram command surface
+remains halt-only, no new data vendor is engaged, and the live config layer
+is not created — it is a protected path reserved for Phase H with owner
+sign-off. Numbers produced by Phase F/G shadow and calibration runs remain
+publication-gated by §12.7 before they can support any Phase H decision.
+
+**2026-08-01 · GMIS-001 build complete: the surveillance division exists,
+disabled, observe-only, on its dedicated branch.** Thirteen commits on
+`claude/add-global-market-intelligence-surveillance` deliver the whole of
+amendment A-3's build scope: spec v2.3.0 with §30 as the citable form; the
+surveillance package (Market State Objects with checksum identity, source
+and feature registries with no runtime add, the event outbox, per-component
+freshness, deterministic technical surveillance with no look-ahead, source
+health with the six missing-news states, alert discipline with an
+unthrottleable severe class, invocation budgets, the supervisor-injected
+sweep, the senior-trader packet with no field a contradiction could travel
+in, unwired risk-gate preconditions, and thesis monitoring whose exit rules
+are unrepresentable outside the registered vocabulary); migration 0002 with
+verified backup and restore; ten agent role files taking the roster to
+nineteen; and a test suite grown from 1,075 to 1,337 with the golden replay
+pinning that observe-only surveillance changes no strategy result. The
+amendment's own required reports bracket the work:
+`docs/audits/2026-07-31-gmis-phase-a-audit.md` before any code and
+`docs/audits/2026-08-01-gmis-final-implementation-report.md` after all of it.
+
+Scope limits, stated rather than implied: nothing activated. The master
+switch, every influence flag, all ingestion domains, agent invocation, and
+the options scaffold remain off; the live surveillance config layer does not
+exist; `live_allowed` is empty everywhere; the Telegram surface remains
+halt-only with surveillance delivery gated MATERIAL-and-above; and the
+recurring cost delta is zero. The next rollout step that changes any of
+this requires its own documented approval (§30.12: no step may be skipped
+without documented approval).

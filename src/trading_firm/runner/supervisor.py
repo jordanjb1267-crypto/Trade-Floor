@@ -46,6 +46,10 @@ Now = Callable[[], dt.datetime]
 # else with a side effect; the default is None, so the trading loop is byte-for
 # -byte the same sequence with or without observability attached.
 Beat = Callable[[str], None]
+# §30.9 surveillance sweep: takes the scheduled event, returns a one-line
+# outcome for the session record. Injected, optional, advisory — the trading
+# loop knows nothing about surveillance internals.
+Sweep = Callable[["ScheduledEvent"], str]
 
 # Sleep in bounded slices and recompute the target each wake. A laptop that
 # slept through a DST transition, an NTP step, or a lid-close would otherwise
@@ -99,6 +103,7 @@ class Supervisor:
         now: Now,
         sleep: Sleep,
         heartbeat: Beat | None = None,
+        sweep: Sweep | None = None,
     ) -> None:
         self._clock = clock
         self._probe = probe
@@ -107,6 +112,7 @@ class Supervisor:
         self._now = now
         self._sleep = sleep
         self._heartbeat = heartbeat
+        self._sweep = sweep
         self._record: SessionRecord | None = None
         self.stopping = False
 
@@ -172,8 +178,22 @@ class Supervisor:
             # supervisor records that the boundary was kept, which is the §22
             # "scheduled laptop operation" deliverable — and on a degraded day
             # it records that evaluation was correctly withheld.
+            #
+            # The §30.9 surveillance sweep rides this same boundary, injected
+            # like the heartbeat: default None means byte-identical behavior,
+            # a degraded day withholds it exactly as it withholds evaluation,
+            # and a raising sweep is a recorded failure, never a crash —
+            # surveillance observes the session and must not be able to end it.
             outcome = "skipped: session degraded" if record.degraded else "boundary kept"
             record.note(scheduled.event, at, outcome)
+            if self._sweep is not None and not record.degraded:
+                try:
+                    record.note(scheduled.event, at, f"sweep: {self._sweep(scheduled)}")
+                except Exception as error:  # noqa: BLE001 — observe-only (§30.2)
+                    record.note(
+                        scheduled.event, at,
+                        f"sweep FAILED (contained): {type(error).__name__}: {error}",
+                    )
 
         elif scheduled.event is SessionEvent.ENTRY_CUTOFF:
             record.note(scheduled.event, at, "manage-only from here (§14)")

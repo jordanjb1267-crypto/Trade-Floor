@@ -1,7 +1,7 @@
 # Constitution
 
 The firm's constitution is the governing specification:
-**`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.2.0.md`**.
+**`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.3.0.md`**.
 This file is a pointer and amendment ledger, not a restatement — one source
 of truth, no divergence.
 
@@ -46,3 +46,4 @@ including a superseded finding preserved unedited per §0.11).
 | v2.0.0 | 2026-07-30 | Owner-supplied adaptive rewrite (senior-trader pair, novelty/evidence classes); drafted from v1.0.0 |
 | v2.1.0 | 2026-07-30 | v2.0.0 + the seven protections it omitted, restored (§29) |
 | v2.2.0 | 2026-07-30 | A-2: conviction discipline — pressure invariance (§5.1) and symmetric scoring of under-classification (§6.6) |
+| v2.3.0 | 2026-07-31 | A-3/GMIS-001: Global Market Intelligence and Surveillance Division (§30), all flags disabled, roster nineteen by owner decision |

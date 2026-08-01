@@ -1,0 +1,72 @@
+# Surveillance configuration baseline (§30.12) — every influence path off.
+# The master switch dominates: while `enabled` is false, every sub-block is
+# inert regardless of its own flags. Validated by
+# src/trading_firm/surveillance/config.py; do not "fix" a failing validator
+# by deleting it.
+surveillance:
+  enabled: false
+  mode: observe_only
+  asset_classes_enabled:
+    - FX_SPOT
+  instruments_enabled: []
+  publish_market_state: true
+  influence_candidate_generation: false
+  influence_live_eligibility: false
+  post_entry_monitoring_enabled: false
+  fail_closed_on_required_component_failure: true
+
+  schedules:
+    asia_context_enabled: true
+    pre_london_briefing_enabled: true
+    london_activation_briefing_enabled: true
+    material_change_only_mid_session: true
+    entry_cutoff_briefing_enabled: true
+    post_session_review_enabled: true
+
+  technical:
+    enabled: true
+    approved_feature_registry_only: true
+    structure_monitoring_enabled: true
+    regime_monitoring_enabled: true
+    liquidity_inference_enabled: true
+    liquidity_evidence_label_required: true
+
+  macro:
+    enabled: false
+    source_ids: []
+    unknown_state_behavior: fail_closed
+
+  news:
+    enabled: false
+    source_ids: []
+    verification_required_for_material_alert: true
+    duplicate_window_seconds: 900
+    unknown_state_behavior: fail_closed
+
+  cross_market:
+    enabled: false
+    context_instruments: []
+    relationship_registry_only: true
+
+  alerts:
+    enabled: true
+    minimum_severity: INFO
+    # Owner decision 2026-07-31: phone delivery is severe-only. INFO/WATCH
+    # stay in the local event log and the daily session report.
+    telegram_minimum_severity: MATERIAL
+    state_change_only: true
+    severe_alerts_never_throttled: true
+
+  claude_agents:
+    enabled: false
+    scheduled_briefings: false
+    event_driven_analysis: false
+    highest_quality_for_material_events: true
+
+  positions:
+    contradiction_monitoring_enabled: false
+    automatic_order_changes_enabled: false
+
+  options_scaffold:
+    enabled: false
+    registered: false

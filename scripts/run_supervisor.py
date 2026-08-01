@@ -193,6 +193,26 @@ def main() -> int:
     config = load_config(BASE_CONFIG_PATH)
     clock = SessionClock(config.session)
 
+    # §30.12: surveillance ships disabled, so the sweep composes to None and
+    # the supervisor is byte-identical to the pre-amendment build. Enabling
+    # the flag does not silently start anything here — the live-data sweep
+    # composition arrives with rollout step 3, and until it exists an enabled
+    # flag is a loud configuration error, not a quiet no-op.
+    from trading_firm.surveillance.config import (  # noqa: E402
+        BASE_SURVEILLANCE_CONFIG_PATH,
+        load_surveillance_config,
+    )
+
+    sweep = None
+    if BASE_SURVEILLANCE_CONFIG_PATH.exists():
+        surveillance_config = load_surveillance_config(BASE_SURVEILLANCE_CONFIG_PATH)
+        if surveillance_config.enabled:
+            raise RuntimeError(
+                "surveillance.enabled is true, but the live-data sweep composition "
+                "lands with rollout step 3 (§30.12) — this build supports steps 1-2 "
+                "(disabled; research replay). Set enabled back to false."
+            )
+
     now_utc = lambda: dt.datetime.now(dt.UTC)  # noqa: E731
     beat = liveness.HeartbeatWriter(
         LOG_DIR,
@@ -212,6 +232,7 @@ def main() -> int:
         now=now_utc,
         sleep=time.sleep,
         heartbeat=announcer,
+        sweep=sweep,
     )
 
     def _stop(signum, frame):  # noqa: ARG001

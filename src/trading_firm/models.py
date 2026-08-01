@@ -111,6 +111,18 @@ class Candidate:
     # thesis. The risk engine may only LOWER the tier with it — a thesis cannot
     # raise what the evidence score set (§5.2).
     thesis_ceiling: EdgeTier | None = None
+    # A-3 (§30.14): references, not payload — which surveillance artifacts
+    # informed this candidate. All optional so every pre-amendment candidate
+    # stays valid, and all EXCLUDED from content_key(): the same trade idea
+    # observed under two packets is one candidate, and shifting every golden
+    # idempotency hash over an annotation would be the checksum-breakage risk
+    # this build's risk register names.
+    market_state_id: str | None = None
+    market_state_packet_id: str | None = None
+    surveillance_report_ids: tuple[str, ...] = ()
+    material_news_item_ids: tuple[str, ...] = ()
+    source_health_snapshot_id: str | None = None
+    thesis_monitoring_plan_id: str | None = None
 
     def stop_distance(self) -> Decimal:
         distance = abs(self.entry_price - self.stop_price)
