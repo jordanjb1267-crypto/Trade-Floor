@@ -2,8 +2,11 @@
 """One observe-only surveillance sweep over research fixtures (§30, Phase C).
 
 Builds a Market State Object from stored OANDA practice candles, runs
-materiality and the alert discipline, and writes a local report — no
-network, no broker, no Telegram, no database writes unless --db is given.
+materiality and the alert discipline, and writes a local JSON report — no
+network, no broker, no Telegram. This script neither initializes nor writes
+the SQLite database: it takes no database argument, opens no connection, and
+its only output is the report file below. Database creation is a separate,
+explicit operator action (`scripts/db_migrate.py`).
 This is the rollout ladder's "research replay only" step made runnable:
 
     python3 scripts/run_surveillance_sweep.py --date 2026-07-29

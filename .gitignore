@@ -18,6 +18,12 @@ logs/
 # files, so anything else under reports/ stays reviewable and committable.
 reports/ops/*-session.json
 
+# Observe-only surveillance sweep output (§30, Phase C). Machine-local runtime
+# reports, same category as the session reports above. The one file already
+# tracked (2026-07-29-0830-sweep.json) is PR #20's committed evidence and is
+# unaffected — ignore rules never untrack existing files.
+reports/ops/surveillance/
+
 # Runtime state, data, and backups (spec §9: only encrypted, approved data may be committed)
 state/**
 !state/**/

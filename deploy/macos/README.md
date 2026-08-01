@@ -146,6 +146,47 @@ therefore migrated **once** into an explicit
 
 It does not satisfy `--require-notify-confirmed`.
 
+## Database operations: backup, migrate, verify, sweep
+
+The database is never created as a side effect of a process starting.
+`database/firm.sqlite` comes into existence only through the explicit command
+below, and every future schema change repeats this exact sequence in this
+exact order:
+
+**1. Back up — if a database exists.** On a fresh installation this correctly
+fails with "nothing to back up," and that is the *only* time skipping a backup
+is acceptable (§30.1 rule 3):
+
+```bash
+.venv/bin/python scripts/db_backup.py
+```
+
+**2. Migrate explicitly.** Creates the file (and parent directory) if absent,
+applies pending migrations in filename order, and prints what existed before,
+what was applied, and the final ledger state. Idempotent — a second run is a
+printed no-op:
+
+```bash
+.venv/bin/python scripts/db_migrate.py
+```
+
+**3. Verify.** Re-run the same command: it must print `no-op — already fully
+migrated` and `integrity: ok`, and exit 0. A migration error instead leaves
+the database at the last fully-applied migration and exits non-zero; restore
+with `scripts/db_restore.py` if needed.
+
+**4. Run the observe-only sweep.** The sweep reads fixtures and writes a JSON
+report only — it neither initializes nor writes the SQLite database, and it
+has no database argument by design:
+
+```bash
+.venv/bin/python scripts/run_surveillance_sweep.py --date 2026-07-29
+```
+
+Sweep reports land in `reports/ops/surveillance/` (gitignored runtime
+output). None of these steps touch a feature flag, `live_allowed`, the
+broker, or any runtime service.
+
 ## Manual repair: TLS trust store
 
 **The installer will never modify your system certificates.** It detects the
