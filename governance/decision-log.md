@@ -1072,3 +1072,31 @@ remains halt-only, no new data vendor is engaged, and the live config layer
 is not created — it is a protected path reserved for Phase H with owner
 sign-off. Numbers produced by Phase F/G shadow and calibration runs remain
 publication-gated by §12.7 before they can support any Phase H decision.
+
+**2026-08-01 · GMIS-001 build complete: the surveillance division exists,
+disabled, observe-only, on its dedicated branch.** Thirteen commits on
+`claude/add-global-market-intelligence-surveillance` deliver the whole of
+amendment A-3's build scope: spec v2.3.0 with §30 as the citable form; the
+surveillance package (Market State Objects with checksum identity, source
+and feature registries with no runtime add, the event outbox, per-component
+freshness, deterministic technical surveillance with no look-ahead, source
+health with the six missing-news states, alert discipline with an
+unthrottleable severe class, invocation budgets, the supervisor-injected
+sweep, the senior-trader packet with no field a contradiction could travel
+in, unwired risk-gate preconditions, and thesis monitoring whose exit rules
+are unrepresentable outside the registered vocabulary); migration 0002 with
+verified backup and restore; ten agent role files taking the roster to
+nineteen; and a test suite grown from 1,075 to 1,337 with the golden replay
+pinning that observe-only surveillance changes no strategy result. The
+amendment's own required reports bracket the work:
+`docs/audits/2026-07-31-gmis-phase-a-audit.md` before any code and
+`docs/audits/2026-08-01-gmis-final-implementation-report.md` after all of it.
+
+Scope limits, stated rather than implied: nothing activated. The master
+switch, every influence flag, all ingestion domains, agent invocation, and
+the options scaffold remain off; the live surveillance config layer does not
+exist; `live_allowed` is empty everywhere; the Telegram surface remains
+halt-only with surveillance delivery gated MATERIAL-and-above; and the
+recurring cost delta is zero. The next rollout step that changes any of
+this requires its own documented approval (§30.12: no step may be skipped
+without documented approval).

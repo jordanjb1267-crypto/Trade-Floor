@@ -479,6 +479,11 @@ class TestNoOrderPathFromTheAdaptiveLayer:
         for name in (
             "adaptive", "packet", "policy", "classification", "independence",
             "arbiter", "agents/bench", "research/analogs", "research/experiments",
+            # §30 (A-3): the surveillance layer joins the same contract. The
+            # per-file glob guard lives in test_surveillance_no_order_path.py;
+            # these entries keep the two suites agreeing on the core modules.
+            "surveillance/state_builder", "surveillance/coordinator",
+            "surveillance/packet", "surveillance/positions/contradiction",
         ):
             path = pathlib.Path("src/trading_firm") / f"{name}.py"
             tree = ast.parse(path.read_text())
