@@ -7,8 +7,8 @@ from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
+from surveillance_fixtures import state_kwargs
 
-from tests.unit.test_surveillance_schemas import state_kwargs
 from trading_firm.surveillance.monitoring import (
     REGISTERED_POLICY_ACTIONS,
     ContradictionClass,

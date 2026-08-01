@@ -11,8 +11,8 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 import pytest
+from replay_series import build_series
 
-from tests.unit.test_replay import build_series
 from trading_firm.config import BASE_CONFIG_PATH, load_config
 from trading_firm.models import InstrumentSpec
 from trading_firm.research import replay_range, tradeable_session_dates

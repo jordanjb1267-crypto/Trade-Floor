@@ -11,9 +11,9 @@ from decimal import Decimal
 import pytest
 import yaml
 
-# The state fixture lives beside the schema tests; reuse it rather than
-# duplicating a 40-field constructor.
-from tests.unit.test_surveillance_schemas import state_kwargs
+# Shared canonical state fixture (bare module via pytest pythonpath).
+from surveillance_fixtures import state_kwargs
+
 from trading_firm.models import Candidate, Direction
 from trading_firm.surveillance.config import (
     BASE_SURVEILLANCE_CONFIG_PATH,

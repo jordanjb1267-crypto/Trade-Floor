@@ -8,8 +8,8 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
+from replay_series import build_series
 
-from tests.unit.test_replay import build_series
 from trading_firm.agents import validate_agent_payload
 from trading_firm.audit.db import apply_migrations, connect
 from trading_firm.config import BASE_CONFIG_PATH, load_config
