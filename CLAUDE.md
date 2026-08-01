@@ -89,11 +89,21 @@ pre-edit hook. Override only with explicit owner sign-off
 - `tests/` — unit/integration/replay/broker_sandbox/failure_injection/acceptance
 - `scripts/` — operational tooling (e.g., `verify_oanda_demo.py`)
 - `mcp/oanda-practice/` — read-only OANDA practice MCP bundle (no order tools by design)
-- `.claude/agents/` — the nine firm agents (§6): senior-trader-alpha, senior-trader-beta,
-  market-opportunity-arbiter, firm-governor, chief-quant-validation, chief-risk-officer,
-  session-strategist, context-analyst, learning-audit-director. Nine rather than §6's
-  twenty-one is a deliberate owner decision (2026-07-30) serving §6's own instruction to
-  "use the smallest number of high-quality agents that produces genuine specialization".
+- `src/trading_firm/surveillance/` — the §30 Global Market Intelligence and
+  Surveillance Division (A-3/GMIS-001): Market State Objects, source and feature
+  governance, events/alerts, post-entry monitoring — all behind
+  `surveillance.enabled: false`, observe-only
+- `.claude/agents/` — the nineteen firm agents. Nine from §6 (senior-trader-alpha,
+  senior-trader-beta, market-opportunity-arbiter, firm-governor,
+  chief-quant-validation, chief-risk-officer, session-strategist, context-analyst,
+  learning-audit-director — the 2026-07-30 consolidation decision) plus the ten
+  §30.3 surveillance roles added by explicit owner decision on 2026-07-31
+  (technical-surveillance-lead, price-structure-monitor, indicator-feature-monitor,
+  liquidity-auction-monitor, volatility-regime-monitor, macro-event-monitor,
+  cross-market-monitor, news-verification-relevance, opportunity-alert-agent,
+  position-contradiction-monitor). The boundary is documented in both camps:
+  context-analyst owns the PRE-SESSION context packet, the monitors own
+  INTRA-SESSION surveillance — neither restates the other.
 
 ## Development
 
