@@ -6,6 +6,18 @@
 *.pem
 secrets/
 
+# Supervisor process logs and liveness signals. Machine-local operational
+# output: pids, interpreter paths, and beat timestamps describe one laptop's
+# run, and committing them would put one machine's runtime state in every
+# clone. The records are still fsynced to disk for the status command.
+logs/
+
+# Per-session operational reports written by the §18 supervisor at each flatten
+# boundary. Machine-local runtime output, like logs/ — one laptop's run does not
+# belong in every clone. Narrow on purpose: only the generated *-session.json
+# files, so anything else under reports/ stays reviewable and committable.
+reports/ops/*-session.json
+
 # Runtime state, data, and backups (spec §9: only encrypted, approved data may be committed)
 state/**
 !state/**/

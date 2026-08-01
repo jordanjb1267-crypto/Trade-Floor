@@ -40,7 +40,14 @@ class CredentialError(RuntimeError):
     """
 
 
-def _validate(name: str, raw: str | None) -> str:
+def validate_credential(name: str, raw: str | None) -> str:
+    """Reject an absent, placeholder, or whitespace-bearing credential (§17).
+
+    Shared preflight: the OANDA getters below and the Telegram notify path
+    (`trading_firm.notify.telegram`) validate on identical terms, so the
+    placeholder vocabulary cannot drift between them. Errors name the
+    variable and the reason; the value itself is never echoed.
+    """
     if raw is None or not raw.strip():
         raise CredentialError(f"{name} not set (see .env.example; §17)")
 
@@ -61,7 +68,7 @@ def _validate(name: str, raw: str | None) -> str:
 
 def practice_token() -> str:
     """The fxTrade Practice token, or raise CredentialError. Never logged."""
-    return _validate(TOKEN_VAR, os.environ.get(TOKEN_VAR))
+    return validate_credential(TOKEN_VAR, os.environ.get(TOKEN_VAR))
 
 
 def configured_account_id() -> str | None:
@@ -75,4 +82,4 @@ def configured_account_id() -> str | None:
     raw = os.environ.get(ACCOUNT_VAR)
     if raw is None or not raw.strip():
         return None
-    return _validate(ACCOUNT_VAR, raw)
+    return validate_credential(ACCOUNT_VAR, raw)

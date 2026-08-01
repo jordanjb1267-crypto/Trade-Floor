@@ -813,6 +813,46 @@ vocabulary this codebase uses. The model-routing policy is not machine-enforced
 and cannot be. Each is stated in the code that carries it rather than left for a
 future reader to discover.
 
+**2026-07-31 · Two parallel Telegram implementations consolidated into one
+(§18/§19).** Two sessions, unable to see each other's work, built the owner
+notification path twice: `notifications/` on this branch (typed §19
+notification set, halt-only remote-command surface with an import-time guard,
+chat-id/token shape validation, cause-separated failure diagnosis) and
+`notify/` on PR #18 from a fresh container (stdlib transport with injectable
+test seam, bounded deterministic retry, 4096-char truncation, secret-scrubbed
+results — and the end-to-end evidence: a real message delivered, message_id=8,
+HTTP 200, `docs/audits/2026-07-31-telegram-notify-e2e.md`).
+
+Consolidated by role rather than by picking a winner. `notify/telegram.py`
+keeps the transport role because it is the code the e2e evidence describes;
+its transport paths are byte-identical to the verified commit. The policy
+layer moved to `notify/surface.py`; the duplicate transport in
+`notifications/` is deleted, because two code paths to the same API drift
+apart silently and the §17 guarantees only hold on the one that is
+maintained. PR #18's commit is merged into this branch unchanged, so its
+authorship and evidence survive in history and GitHub will mark the PR merged
+when this branch lands.
+
+One modification to the verified module, stated rather than slipped in:
+`preflight()` gains the shape checks. The transport's generic credential
+check passed a bot's @username configured as the chat id — the misconfiguration
+actually present in this session's environment, not a hypothetical — and a
+runtime caller records the resulting 400 as a failed NotifyResult and moves
+on, which is a §19 risk-halt alert dying silently. Shape validation is
+pre-I/O, so the delivery evidence is unaffected.
+
+Also carried over from the duplicate before deletion: the remedy mapping that
+distinguishes an unreachable host from a bad token from a wrong destination,
+added after this session's first preflight run told the operator to check
+credentials for what was an egress-policy denial. It lives in the policy layer
+(`remedy_for`), so the mapping can improve without touching verified transport.
+
+The canonical verifier is `scripts/verify_telegram.py` (strict preflight,
+§19 surface assertions, getMe, one real send); `verify_telegram_notify.py`
+remains as a forwarding stub because the audit instructs the operator to
+re-run it on the trading laptop, and an audit whose instruction dangles
+teaches people to stop following audits.
+
 **Standing owner to-dos:** none outstanding. Implementer is building v2
 Adoption Pass 2 in the order set in `docs/design/2026-07-30-v2-pass-2-scope.md`
 part 5 (W1 packet, W8 adaptive policy manifest, then the agent layer). Owner-side
@@ -824,3 +864,150 @@ exit-variant tests, and one first look each for sweep-reversal and
 continuation — the clean path is post-2026-07-29 data. Research code is
 publication-gated (§12.7): no number may be published until its code paths
 pass an independent, refutation-default adversarial review.
+
+**2026-07-31 · §18 Telegram notification path built and verified
+end-to-end.** The owner added `api.telegram.org` to the Claude Code
+environment's network allowlist and supplied `TELEGRAM_BOT_TOKEN` /
+`TELEGRAM_CHAT_ID` as environment settings (a fresh session was required —
+network-policy changes only reach new containers). Implemented
+`src/trading_firm/notify/telegram.py`: stdlib-only, deterministic, advisory
+(`send()`/`get_me()` return a result and never raise — a notification
+channel must not be able to crash the process it reports on), with every
+error path sanitized because Telegram's API puts the bot token in the
+request URL. Credential preflight is shared with the OANDA path:
+`execution/credentials.py`'s validator is now public
+(`validate_credential`) so the placeholder vocabulary cannot drift between
+the two. End-to-end verification **PASSED 2/2** at 2026-07-31T02:37Z —
+`getMe` resolved the live bot and `sendMessage` delivered `message_id=8` to
+the redacted owner chat `50…33`
+(`docs/audits/2026-07-31-telegram-notify-e2e.md`). The notify package
+imports no broker code and carries no order capability (§0.3); unit tests
+pin fail-closed preflight, token-leak containment, the bounded
+fixed-delay retry policy, truncation at Telegram's 4096-char limit, and
+chat-id redaction (862 total passing). Limits stated: this validates the
+channel from the remote environment, not from the trading laptop, and no
+runtime caller is wired yet — incident/watchdog integration is future
+work. Nothing was unlocked; `live_allowed` remains empty everywhere.
+
+**2026-07-31 · §18 supervisor observability, deployment correctness, and
+notification delivery confirmation.** The §18 supervisor was installed on the
+trading laptop and reported "Installed and started" while dying on import every
+60 seconds. Three independent defects made that possible, and each is now closed
+by a mechanism rather than by care.
+
+*Deployment.* The plist resolved `/usr/bin/env python3`, but launchd runs with
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin` — `/usr/local/bin` is absent — so it
+selected the macOS system Python 3.9.6: below the §23 floor, without the
+project's dependencies, and without the TLS trust store repaired on the 3.11
+build. The plist now pins an absolute venv interpreter. `install.sh` gained
+guards for a missing venv, an uninstalled project, and a failing runtime check
+(`scripts/check_runtime.py`: Python >= 3.11 and a bare TLS handshake to the
+practice host, SNI only, no credential read or transmitted). Separately,
+`launchctl bootout` proved to be ASYNCHRONOUS: bootstrapping into a domain still
+holding the old job fails with EIO(5), which made reinstall intermittently fail
+and succeed for reasons unrelated to the change being installed. The installer
+now waits for teardown and treats a rejected bootstrap as a failure.
+
+*Observability.* `run_supervisor.py` wrote nothing on a healthy start, so the
+logs could not distinguish "running" from "hung" — only a crash produced output.
+`runner/liveness.py` adds a structured startup event written BEFORE the `.env`
+load and config validation (a record that only exists once initialisation
+succeeds cannot describe a start that never got that far), plus a heartbeat per
+sleep slice. `scripts/supervisor_status.py` resolves launchd state, heartbeat
+freshness, and startup counts into exactly four states — healthy, stale,
+stopped, crash-looping — via a pure `diagnose()`, so every transition is tested
+without launchd, a clock, or a process. The crash-loop check runs BEFORE the
+running/not-running split, because a fast-respawning job is "running" at
+whichever instant you look. `launchctl bootstrap` returning 0 means launchd
+accepted the job, not that it survived, so the installer now polls and verifies
+before claiming success.
+
+*Notification delivery.* The startup message discarded its `NotifyResult` and
+stamped a marker on ATTEMPT, recording a failed delivery as a success. The
+marker is now split in two, because it was answering two questions at once: a
+delivery marker written ONLY on confirmed delivery (governs dedup), and an
+attempt ledger written on every outcome (governs a 300s retry interval and a
+bound of 5). That split is what lets a failed delivery stay eligible for retry
+while a crash loop still cannot flood — verified against the real wiring at 60
+restarts with Telegram down: 5 sends, not 60. Both outcomes append to the events
+log. `NotificationKind` gained `SUPERVISOR_STARTUP_HEALTH`; because §19 sets a
+MINIMUM, additions are permitted but are now registered explicitly
+(`SPEC_MINIMUM_KINDS` / `OPERATIONAL_KINDS`), replacing a `len() == 11` assertion
+that would have been satisfied by deleting one kind and adding another.
+
+*Owner conditions (approved 2026-07-31).* Process health and notifier health are
+INDEPENDENT axes: `diagnose()` takes no notification argument, and a dead
+notifier never makes a running supervisor report unhealthy. Installation may
+succeed with a degraded notifier — uninstalling a genuinely running supervisor
+is the wrong remedy — but prints a prominent warning naming the consequence.
+Live readiness is stricter: `governance/strategy-promotion-policy.md` now
+requires `supervisor_status.py --require-notify-confirmed` to exit 0 for the §25
+definition of done, probation start, or any owner activation. Retry-episode
+state persists on disk across restarts and resets on confirmed success, never on
+process restart — an in-memory counter would reset on exactly the event it must
+suppress. The previous attempt-stamped marker migrates ONCE into an explicit
+`legacy_assumed_confirmation` with a finite 1-hour TTL and its own event record;
+it is never represented as a delivery and does not satisfy the readiness gate.
+
+Verification: 1041 tests passing (from 929), ruff clean, 1951 §-references
+resolve, 36 attributed quotes verified. Found and fixed during the work: the two
+§-checkers scanned the new in-tree `.venv` and failed on a vendored pygments
+lexer, so `.venv`/`venv`/`site-packages` joined `node_modules` in `SKIP_DIRS`;
+and a test fixture that patched four path constants but not a fifth wrote a
+tmp-derived assumption into the repository's real `state/ops` directory, now
+guarded by a fixture assertion that fails on any unredirected state path.
+
+Scope limits, stated rather than implied: this is process supervision and
+observability. No file under `config/` was touched, `live_allowed` appears
+nowhere in the change, and the supervisor still cannot place an order (§0 iron
+rule 1, asserted by the unchanged no-order-path acceptance test). System-level
+changes made outside the repository and NOT captured here: `certifi` installed
+into `/usr/local/bin/python3` and a `cert.pem` symlink created under the 3.11
+framework — the manual repair is documented in `deploy/macos/README.md`, and the
+installer deliberately never performs it.
+
+**2026-07-31 · §7.2 `.env` reclassified as an owner-managed credential file;
+the contradictory hook message corrected.** The §17 secret scanner told
+operators that secrets "belong in the OS keychain or an untracked .env — never
+in repository files" while simultaneously blocking every write to `.env`. The
+guidance and the enforcement pointed in opposite directions: an owner following
+the message to the letter received a hard block naming no remedy. This surfaced
+in practice this session, when creating the owner's `.env` had to be handed back
+to the owner as a shell command because the tool path was blocked by the very
+check that recommended the destination.
+
+The contradiction concealed a real gap. `.env` was blocked only *incidentally* —
+because its contents happened to match a credential regex — not because any rule
+named it. A `.env` written with a short or unusually-shaped value passed straight
+through. A 12-case behavioural harness run against the pre-change hook confirms
+four such holes: a benign `.env`, a benign `.env` under owner override,
+`.env.local`, and a nested `deploy/.env` were all **allowed**.
+
+The remedy deliberately does **not** exempt `.env`; it does the opposite. A new
+`_is_owner_managed_env` check adds an explicit, unconditional prohibition on
+`.env` and every `.env.<suffix>` variant, matched on basename so the rule holds at
+any depth — mirroring how `.gitignore` already treats these paths. It is
+evaluated *before* `OWNER_APPROVED_PROTECTED_EDIT` is read, so an owner approval
+granted for a protected production path can never be spent unlocking a credential
+file. `.env.example` remains the single writable member of the family: tracked,
+value-free, and the place an agent adds a new variable name with an empty value.
+
+Both block messages now name the remedy instead of contradicting it. Each points
+at `scripts/check_env.py`, a structure-only validator reporting existence, the
+expected variable set, per-variable format, git-ignore status, and file mode as
+pass/fail, and never printing a value. That closes the loop the old message left
+open: an agent forbidden to write the file can still confirm the file is correct.
+
+Verification: the proposed hook passes all 12 harness cases, including the four
+the current hook fails; the patch applies cleanly via `git apply --check`.
+Operationally, the owner's `.env` was created manually on 2026-07-31 and
+validated 8/8 — three expected variables, no extras, formats correct, git-ignored,
+untracked, mode `0600`. No credential value entered the repository, any log, or
+any agent-visible output at any point.
+
+Scope limits, stated rather than implied: this changes hook *messaging* and adds
+a prohibition. It unlocks nothing. No agent gains any ability to read or write a
+credential, `Read(.env)` and `Read(.env.*)` remain denied in
+`.claude/settings.json`, and `live_allowed` remains empty everywhere. The hook
+remains fast feedback, not the security boundary — OS permissions and startup
+hash verification are the enforcement layers (§7.3, §17).

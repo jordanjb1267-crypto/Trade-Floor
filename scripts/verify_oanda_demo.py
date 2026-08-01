@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 0 broker-audit probe: OANDA fxTrade Practice (demo) connection check.
 
-Read-only. Performs the Master Handoff v1.1.0 §16 connection checks against
+Read-only. Performs the governing spec's §16 connection checks against
 the PRACTICE environment only — this script refuses to touch the live host by
 design (§13 staging: demo before live). It submits no orders.
 
