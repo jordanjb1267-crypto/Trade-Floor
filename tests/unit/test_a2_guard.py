@@ -36,6 +36,17 @@ PRESSURE_BLIND_MODULES = [
     "trading_firm.surveillance.technical.indicators",
     "trading_firm.surveillance.technical.liquidity",
     "trading_firm.surveillance.technical.regime",
+    "trading_firm.surveillance.source_health",
+    "trading_firm.surveillance.macro.blackout",
+    "trading_firm.surveillance.macro.calendar",
+    "trading_firm.surveillance.news.normalization",
+    "trading_firm.surveillance.news.verification",
+    "trading_firm.surveillance.news.relevance",
+    "trading_firm.surveillance.cross_market.relationships",
+    "trading_firm.surveillance.cross_market.divergence",
+    "trading_firm.surveillance.sources.oanda_prices",
+    "trading_firm.surveillance.sources.fmp_calendar",
+    "trading_firm.surveillance.sources.fmp_news",
 ]
 
 

@@ -52,6 +52,11 @@ class FreshnessThresholds:
             ) from None
 
 
+# Small forward skew is NTP jitter; beyond it the clock itself is suspect
+# and the honest answer is stale, not fresh (§30.17 failure row: clock drift).
+MAX_CLOCK_SKEW_SECONDS = 120
+
+
 def component_status(
     last_update: dt.datetime | None,
     component: str,
@@ -63,6 +68,10 @@ def component_status(
     if last_update.tzinfo is None or now.tzinfo is None:
         raise ValueError("freshness compares aware datetimes only (§30.4, C-2)")
     age = (now - last_update).total_seconds()
+    if age < -MAX_CLOCK_SKEW_SECONDS:
+        # A timestamp from the future means either the source or this host
+        # has a broken clock. Uncertain data disables, never confirms.
+        return ComponentStatus.STALE
     limit = thresholds.for_component(component)
     return ComponentStatus.FRESH if age <= limit else ComponentStatus.STALE
 
