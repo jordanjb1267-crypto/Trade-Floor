@@ -13,6 +13,7 @@ significance threshold with all 65 experiment tests still green.
 import importlib
 import textwrap
 
+import a2_guard
 import pytest
 from a2_guard import FIRM_STATE_FIELDS, FIRM_STATE_TYPES, assert_pressure_blind
 
@@ -150,3 +151,62 @@ class TestTheGuardItself:
         # The original guard's whole failure was checking a single name.
         assert len(FIRM_STATE_TYPES) >= 5
         assert {"closed_equity", "session_realized_loss"} <= FIRM_STATE_FIELDS
+
+
+class TestContradictionStaysOutOfTheMarketSide:
+    """§30.10's fence, enforced in the flow direction: the contradiction
+    monitor may see positions, but nothing that classifies, scores, or sets
+    a significance threshold may see the contradiction monitor. Without this
+    test, excluding `positions.contradiction` from the pressure-blind list
+    would just be a hole."""
+
+    POST_ENTRY_MODULES = ("positions.contradiction", "surveillance.monitoring")
+    POST_ENTRY_NAMES = (
+        "PositionContradiction",
+        "ThesisMonitoringPlan",
+        "OpenPositionView",
+    )
+    SURVEILLANCE_PRESSURE_BLIND = [
+        name for name in PRESSURE_BLIND_MODULES if ".surveillance." in name
+    ]
+
+    @pytest.mark.parametrize("module_name", SURVEILLANCE_PRESSURE_BLIND)
+    def test_no_market_side_module_reaches_post_entry_material(
+        self, module_name: str
+    ) -> None:
+        import inspect
+
+        module = importlib.import_module(module_name)
+        source = inspect.getsource(module)
+        executable = a2_guard._executable_source(source)
+        for fragment in self.POST_ENTRY_MODULES + self.POST_ENTRY_NAMES:
+            assert fragment not in executable, (
+                f"{module_name} references {fragment!r}: contradiction output may "
+                f"reach escalation and audit only, never classification or "
+                f"materiality inputs (§30.10, §5.1)"
+            )
+
+    def test_the_market_side_list_is_not_empty(self) -> None:
+        assert len(self.SURVEILLANCE_PRESSURE_BLIND) >= 15
+
+    def test_the_fence_itself_trips(self, tmp_path) -> None:
+        """Probe the guard with a synthetic violation, both to prove the
+        scan works and to document what a violation looks like."""
+        offending = (
+            "from trading_firm.surveillance.positions.contradiction import evaluate\n"
+            "def materiality(state):\n"
+            "    return evaluate(state)\n"
+        )
+        assert "positions.contradiction" in a2_guard._executable_source(offending)
+
+    def test_the_contradiction_monitor_is_excluded_with_a_narrow_view(self) -> None:
+        """The exclusion is legitimate only while the view stays narrow: the
+        OpenPositionView type must not grow equity/P&L/capacity fields."""
+        from dataclasses import fields
+
+        from trading_firm.surveillance.positions.contradiction import OpenPositionView
+
+        declared = {f.name for f in fields(OpenPositionView)}
+        assert declared == {
+            "instrument", "direction", "entry_price", "stop_price", "opened_at_utc",
+        }
