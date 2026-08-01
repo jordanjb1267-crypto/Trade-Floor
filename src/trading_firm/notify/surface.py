@@ -94,6 +94,8 @@ class NotificationKind(enum.StrEnum):
     TIER_CHANGE = "tier_change"
     DAILY_SESSION_REPORT = "daily_session_report"
     WEEKLY_PERFORMANCE_REPORT = "weekly_performance_report"
+    SURVEILLANCE_ALERT = "surveillance_alert"
+    SURVEILLANCE_BRIEFING = "surveillance_briefing"
 
     @property
     def is_alert(self) -> bool:
@@ -104,6 +106,7 @@ class NotificationKind(enum.StrEnum):
             NotificationKind.RISK_HALT,
             NotificationKind.DATA_OR_BROKER_FAILURE,
             NotificationKind.TIER_CHANGE,
+            NotificationKind.SURVEILLANCE_ALERT,
         )
 
 
@@ -134,19 +137,37 @@ SPEC_MINIMUM_KINDS = frozenset(
 # spec set, with the spec discussion that implies.
 OPERATIONAL_KINDS = frozenset({"supervisor_startup_health"})
 
+# The §30 surveillance class (A-3). Not operational — these say things about
+# the MARKET, so they cannot ride in OPERATIONAL_KINDS without falsifying its
+# contract — and not in the §19 minimum, which is pinned as ratified. A third
+# registered set with its own contract: SURVEILLANCE_ALERT reaches Telegram
+# only at MATERIAL/CRITICAL severity (owner decision 2026-07-31, §30.6; the
+# config loader refuses a lower delivery threshold), and SURVEILLANCE_BRIEFING
+# stays unused until the claude_agents flags enable scheduled briefings.
+# Neither can carry a direction: the OpportunityAlert schema types
+# trade_direction as None (§30.13).
+SURVEILLANCE_KINDS = frozenset({"surveillance_alert", "surveillance_briefing"})
+
 
 def _registered_notification_kinds() -> None:
     """Fail at import if the outbound set drifts from its registry."""
     declared = {member.value for member in NotificationKind}
-    registered = SPEC_MINIMUM_KINDS | OPERATIONAL_KINDS
+    registered = SPEC_MINIMUM_KINDS | OPERATIONAL_KINDS | SURVEILLANCE_KINDS
     added = declared - registered
     removed = registered - declared
-    if added or removed:
+    overlaps = (
+        (SPEC_MINIMUM_KINDS & OPERATIONAL_KINDS)
+        | (SPEC_MINIMUM_KINDS & SURVEILLANCE_KINDS)
+        | (OPERATIONAL_KINDS & SURVEILLANCE_KINDS)
+    )
+    if added or removed or overlaps:
         raise RuntimeError(
-            f"NotificationKind changed (added={sorted(added)}, removed={sorted(removed)}). "
-            f"§19 specifies a MINIMUM set, so additions are allowed — but each one is "
-            f"registered explicitly. Put a spec-mandated kind in SPEC_MINIMUM_KINDS and "
-            f"an operational one in OPERATIONAL_KINDS, and say which it is in the commit."
+            f"NotificationKind changed (added={sorted(added)}, removed={sorted(removed)}, "
+            f"overlaps={sorted(overlaps)}). §19 specifies a MINIMUM set, so additions are "
+            f"allowed — but each one is registered explicitly and in exactly one set. Put a "
+            f"spec-mandated kind in SPEC_MINIMUM_KINDS, an operational one in "
+            f"OPERATIONAL_KINDS, a §30 surveillance one in SURVEILLANCE_KINDS, and say "
+            f"which it is in the commit."
         )
 
 

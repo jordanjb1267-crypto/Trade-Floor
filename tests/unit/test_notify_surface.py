@@ -185,13 +185,30 @@ class TestNotificationKinds:
         assert len(surface.SPEC_MINIMUM_KINDS) == 11
         assert surface.SPEC_MINIMUM_KINDS <= {member.value for member in NotificationKind}
 
-    def test_every_kind_is_registered_as_spec_or_operational(self) -> None:
+    def test_every_kind_is_registered_in_exactly_one_set(self) -> None:
         """Replaces a bare `len() == 11`, which could be satisfied by deleting
         one kind and adding another. The registry says which is which, so an
-        operational message can never be passed off as a §19 requirement."""
+        operational or surveillance message can never be passed off as a §19
+        requirement."""
         declared = {member.value for member in NotificationKind}
-        assert declared == surface.SPEC_MINIMUM_KINDS | surface.OPERATIONAL_KINDS
+        assert declared == (
+            surface.SPEC_MINIMUM_KINDS
+            | surface.OPERATIONAL_KINDS
+            | surface.SURVEILLANCE_KINDS
+        )
         assert not (surface.SPEC_MINIMUM_KINDS & surface.OPERATIONAL_KINDS)
+        assert not (surface.SPEC_MINIMUM_KINDS & surface.SURVEILLANCE_KINDS)
+        assert not (surface.OPERATIONAL_KINDS & surface.SURVEILLANCE_KINDS)
+
+    def test_the_surveillance_class_is_exactly_two_kinds(self) -> None:
+        """§30.6 (A-3): the surveillance class is its own registered set —
+        market-content kinds cannot ride in OPERATIONAL_KINDS without
+        falsifying its machinery-only contract."""
+        assert surface.SURVEILLANCE_KINDS == {"surveillance_alert", "surveillance_briefing"}
+
+    def test_surveillance_alert_is_an_alert_briefing_is_not(self) -> None:
+        assert NotificationKind.SURVEILLANCE_ALERT.is_alert
+        assert not NotificationKind.SURVEILLANCE_BRIEFING.is_alert
 
     def test_the_supervisor_startup_kind_is_operational_not_spec(self) -> None:
         value = NotificationKind.SUPERVISOR_STARTUP_HEALTH.value
