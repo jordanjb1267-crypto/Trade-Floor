@@ -122,6 +122,38 @@ The installer prints a prominent warning block instead and reports the state in
 its summary — a §19 alert nobody receives is worse than no alert at all, so it
 is never allowed to pass silently.
 
+**What refreshes readiness confirmation.** Every approved owner notification
+that the API confirms — supervisor startup health, session-start health, the
+daily session report, and any other §19 kind — refreshes the canonical
+confirmation evidence (`state/ops/notifier-last-delivery.json`). They all route
+through one `deliver()` function in `scripts/run_supervisor.py`, and the marker
+is written strictly inside its success branch.
+
+A delivery that fails, returns a non-success status, is skipped or suppressed
+by the dedup/retry rules, or never runs because the notifier is disabled
+refreshes **nothing**. Confirmation is evidence of a real delivery or it is not
+evidence at all.
+
+**Readiness still expires.** The marker holds a timestamp, not a flag. Once
+`DELIVERY_CONFIRMED_TTL_SECONDS` (1 hour) passes with no newer successful
+delivery, the surface returns to `unconfirmed` and the gate closes again. A
+confirmation is never permanent — the point is to prove the notifier works
+*now*, not that it once worked.
+
+> Before 2026-08-03 only the startup delivery refreshed this, so a healthy
+> supervisor that had been up more than an hour reported `unconfirmed` even
+> while delivering session messages successfully. That was a false negative on
+> a mandatory gate, which is how operators learn to distrust gates.
+
+**Manual bypass is prohibited.** Do not hand-write, copy, back-date, or
+`touch` the confirmation marker, and do not pass `--max-beat-age` or any other
+flag to make a failing check appear to pass. If the gate is closed, the correct
+response is to find out why the notifier is not delivering — start with
+`scripts/verify_telegram.py` and `logs/supervisor-events.jsonl`, which records
+every delivery outcome with its status code. Running `verify_telegram.py`
+deliberately does **not** refresh readiness: a manually-run diagnostic must not
+be able to satisfy a gate about the supervisor's own delivery path.
+
 **Live readiness is different.** Any live-readiness procedure — the §25
 definition of done, a probation start, any owner activation — must require:
 

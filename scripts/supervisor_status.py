@@ -42,7 +42,12 @@ from trading_firm.runner import liveness  # noqa: E402
 LABEL = "com.tradefloor.supervisor"
 LOG_DIR = REPO / "logs"
 OPS_STATE = REPO / "state" / "ops"
-DELIVERY_MARKER = OPS_STATE / "supervisor-startup-delivered.json"
+# Readiness reads the CANONICAL marker — refreshed by every successful owner
+# notification — not the startup-dedup marker. Reading the startup marker was
+# the defect: it is never refreshed after startup, so a healthy supervisor
+# delivering session messages still reported `unconfirmed` once its startup
+# confirmation aged past the TTL.
+CONFIRMATION_MARKER = OPS_STATE / "notifier-last-delivery.json"
 ATTEMPT_LEDGER = OPS_STATE / "supervisor-startup-attempts.json"
 ASSUMPTION_MARKER = OPS_STATE / "supervisor-startup-legacy-assumption.json"
 
@@ -146,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     # dead is a real condition, and collapsing it into the supervisor state
     # would hide a silent alerting failure behind a green process.
     notify_state = liveness.notify_surface_state(
-        delivered_at=liveness.read_delivery_marker(DELIVERY_MARKER),
+        delivered_at=liveness.read_delivery_marker(CONFIRMATION_MARKER),
         assumed_at=liveness.read_assumed_confirmation(ASSUMPTION_MARKER),
         ledger=liveness.read_attempt_ledger(ATTEMPT_LEDGER),
         now=now,

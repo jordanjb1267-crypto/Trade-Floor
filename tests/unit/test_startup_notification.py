@@ -67,6 +67,7 @@ def wired(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "ATTEMPT_LEDGER", tmp_path / "attempts.json")
     monkeypatch.setattr(runner, "LEGACY_MARKER", tmp_path / "legacy.json")
     monkeypatch.setattr(runner, "ASSUMPTION_MARKER", tmp_path / "assumed.json")
+    monkeypatch.setattr(runner, "CONFIRMATION_MARKER", tmp_path / "confirmation.json")
 
     # Fail loudly if a NEW path constant is added and this fixture is not
     # updated, instead of silently writing into the real repository again.

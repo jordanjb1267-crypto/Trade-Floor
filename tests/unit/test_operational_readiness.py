@@ -88,7 +88,7 @@ class TestLiveReadinessRequiresConfirmedDelivery:
         assert liveness.NotifyState.ASSUMED not in passing
 
     def test_an_assumption_does_not_satisfy_the_gate(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setattr(status, "DELIVERY_MARKER", tmp_path / "d.json")
+        monkeypatch.setattr(status, "CONFIRMATION_MARKER", tmp_path / "d.json")
         monkeypatch.setattr(status, "ATTEMPT_LEDGER", tmp_path / "a.json")
         monkeypatch.setattr(status, "ASSUMPTION_MARKER", tmp_path / "assumed.json")
         monkeypatch.setattr(status, "LOG_DIR", tmp_path)
