@@ -53,6 +53,19 @@ OPS_STATE = REPO / "state" / "ops"
 # event it is meant to suppress.
 DELIVERY_MARKER = OPS_STATE / "supervisor-startup-delivered.json"
 ATTEMPT_LEDGER = OPS_STATE / "supervisor-startup-attempts.json"
+# Canonical notifier-readiness evidence: when did ANY approved owner
+# notification last succeed? Refreshed by every successful delivery through
+# `deliver()` — startup health, session-start health, the daily report, and
+# anything else routed through that one function.
+#
+# Deliberately SEPARATE from DELIVERY_MARKER, which answers a different
+# question ("have we announced THIS startup?") and governs dedup. Folding the
+# two together looked simpler and was wrong: a session message delivered
+# shortly before a restart would dedup the startup announcement away, and the
+# owner would never learn the supervisor had restarted. Two questions, two
+# records — the same discipline the startup marker and attempt ledger already
+# follow.
+CONFIRMATION_MARKER = OPS_STATE / "notifier-last-delivery.json"
 # The previous attempt-stamped marker. Migrated ONCE into an explicit, finite
 # assumption — never read as a delivery, never written again.
 LEGACY_MARKER = OPS_STATE / "supervisor-startup-notify.json"
@@ -79,8 +92,38 @@ def probe() -> HealthReport:
     )
 
 
+def deliver(kind: NotificationKind, body: str, now: dt.datetime | None = None):
+    """THE single owner-notification delivery path for this process.
+
+    Every approved §19 notification goes through here, and a delivery the API
+    confirms — and only such a delivery — refreshes the canonical readiness
+    evidence. One function rather than a marker write at each call site,
+    because the defect this fixes was exactly that: the startup path recorded
+    its success and the session path did not, so a supervisor delivering
+    session messages perfectly still decayed to `unconfirmed` an hour after
+    startup and failed `--require-notify-confirmed`.
+
+    Confirmation is never written on a failure, a non-2xx response, a skipped
+    or suppressed send, or a disabled notifier: those paths either never reach
+    this function or return `ok=False`, and the marker is written strictly
+    inside the `result.ok` branch. Nothing else in this process writes it.
+
+    Confirmation does not become permanent. The marker is a timestamp read
+    against `DELIVERY_CONFIRMED_TTL_SECONDS`, so readiness still expires
+    unless a newer successful delivery refreshes it.
+    """
+    result = notify_owner(kind, body)
+    if result.ok:
+        liveness.record_delivered(CONFIRMATION_MARKER, now=now or dt.datetime.now(dt.UTC))
+    return result
+
+
 def notify(kind: NotificationKind, body: str) -> bool:
-    return notify_owner(kind, body).ok
+    """Injected into `Supervisor` — session-start health, the daily report, and
+    every other §19 notification the trading loop emits. The loop itself knows
+    nothing about delivery evidence; it calls a bool-returning callable, as
+    before."""
+    return deliver(kind, body).ok
 
 
 def _announce_startup(started_at: dt.datetime, mode: str) -> dict:
@@ -141,7 +184,9 @@ def attempt_startup_notification(payload: dict, now: dt.datetime) -> bool:
     if not decision.should_send:
         return False
 
-    result = notify_owner(NotificationKind.SUPERVISOR_STARTUP_HEALTH, _startup_body(payload))
+    # Same shared path as every session notification, so a confirmed startup
+    # delivery refreshes the canonical readiness evidence too.
+    result = deliver(NotificationKind.SUPERVISOR_STARTUP_HEALTH, _startup_body(payload), now)
 
     # The transport sanitises its own detail; redact again because this string
     # is about to become an immutable record (§0 rule 11, §0 iron rule 5).

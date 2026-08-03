@@ -19,6 +19,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "db_migrate.py"
 REAL_DB = REPO / "database" / "firm.sqlite"
+# Captured at import, before any test runs, so the guard below compares against
+# the state the operator's database was in when the suite started.
+REAL_DB_MTIME_AT_IMPORT = REAL_DB.stat().st_mtime if REAL_DB.exists() else None
 
 EXPECTED_MIGRATIONS = ["0001_init.sql", "0002_surveillance.sql"]
 
@@ -191,10 +194,24 @@ class TestNoRuntimeReachable:
 
 
 class TestRepositoryStaysClean:
-    def test_the_real_database_path_remains_absent(self) -> None:
-        """Every test above used tmp_path; this guards the suite itself —
-        if any future test drops the --db argument, this fails the run."""
-        assert not REAL_DB.exists(), (
-            "database/firm.sqlite exists after the test run: a test touched the "
-            "real repository database path"
+    def test_the_real_database_is_not_touched_by_the_suite(self) -> None:
+        """Every test above used tmp_path; this guards the suite itself — if a
+        future test drops the --db argument, this fails the run.
+
+        Originally asserted the real database was ABSENT, which was true only
+        until it was legitimately initialized on 2026-08-01. Absence was never
+        the property worth protecting: "the tests did not touch the operator's
+        database" is, and it keeps holding once the file exists. The mtime is
+        captured at import, before any test in this module runs.
+        """
+        if REAL_DB_MTIME_AT_IMPORT is None:
+            assert not REAL_DB.exists(), (
+                "database/firm.sqlite was CREATED during the test run: a test "
+                "touched the real repository database path"
+            )
+            return
+        assert REAL_DB.exists(), "the real database vanished during the test run"
+        assert REAL_DB.stat().st_mtime == REAL_DB_MTIME_AT_IMPORT, (
+            "database/firm.sqlite was MODIFIED during the test run: a test "
+            "touched the real repository database path"
         )
