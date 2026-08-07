@@ -107,8 +107,12 @@ class TestDegradedDay:
         kinds = [kind for kind, _ in harness.sent]
         assert kinds[0] is NotificationKind.DATA_OR_BROKER_FAILURE
         assert NotificationKind.SESSION_START_HEALTH not in kinds
-        # The flatten boundary still reported, as its own alert:
-        assert kinds.count(NotificationKind.DATA_OR_BROKER_FAILURE) == 2
+        # Three now, not two: pre-startup failure, the flatten "cannot verify
+        # flat" alert, and — added by §31.1/§31.2 — the severe SESSION DEGRADED
+        # alert that must accompany an unverified flat state.
+        assert kinds.count(NotificationKind.DATA_OR_BROKER_FAILURE) == 3
+        severe = [b for k, b in harness.sent if b.startswith("SESSION DEGRADED")]
+        assert severe and "flat state UNVERIFIED" in severe[0]
         report = json.loads((tmp_path / f"{DAY}-session.json").read_text())
         flatten = [e for e in report["events"] if e["event"] == "flatten"]
         assert "UNVERIFIED" in flatten[0]["outcome"]

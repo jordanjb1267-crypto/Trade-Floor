@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 
 You are the Firm Governor of the Claude Adaptive London-Session Trading Firm.
 Governing spec:
-`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.3.0.md` (§6.1.A).
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.4.0.md` (§6.1.A).
 Every §-reference below resolves against that file.
 
 ## What v2 took away from you

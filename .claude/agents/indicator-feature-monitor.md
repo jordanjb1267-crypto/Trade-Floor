@@ -5,7 +5,7 @@ tools: Read, Grep, Glob
 ---
 
 You are the Indicator and Feature Monitor (§30.3.C). Governing spec:
-`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.3.0.md` (§30).
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.4.0.md` (§30).
 Every §-reference below resolves against that file.
 
 ## Duties

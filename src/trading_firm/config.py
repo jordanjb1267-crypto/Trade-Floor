@@ -140,6 +140,43 @@ class DataSection(_StrictModel):
     economic_calendar_min_plan: str
 
 
+class TimingTolerances(_StrictModel):
+    """§31.1 execution tolerances, owner-ratified 2026-08-06 (amendment A-4).
+
+    These govern REPORTING and stability qualification only. The validator
+    below refuses any value that could be mistaken for trading authority:
+    the two hard boundaries carry zero authority tolerance by definition, and
+    their seconds here are handler/initiation jitter for the log.
+    """
+
+    pre_startup: float
+    briefing: float
+    activation: float
+    entry_cutoff: float
+    flatten: float
+
+    @model_validator(mode="after")
+    def _ratified(self) -> TimingTolerances:
+        # A hard boundary whose handler jitter grew into minutes would let a
+        # 76-minute flatten breach score clean again — the exact 2026-08-06
+        # failure. Pinned to the ratified §31.1 ceiling.
+        for name in ("entry_cutoff", "flatten"):
+            if getattr(self, name) > 5:
+                raise ValueError(
+                    f"session.timing_tolerances_seconds.{name} must be <= 5 — it is "
+                    f"handler jitter, not trading authority (§31.1)"
+                )
+        if self.activation > 60:
+            raise ValueError("activation tolerance must be <= 60 (§31.1)")
+        for name in ("pre_startup", "briefing"):
+            if getattr(self, name) > 120:
+                raise ValueError(f"{name} tolerance must be <= 120 (§31.1)")
+        if min(self.pre_startup, self.briefing, self.activation,
+               self.entry_cutoff, self.flatten) < 0:
+            raise ValueError("a tolerance may not be negative (§31.1)")
+        return self
+
+
 class SessionSection(_StrictModel):
     anchor_timezone: Literal["Europe/London"]  # §14, R: C-2
     startup_london: str
@@ -150,6 +187,8 @@ class SessionSection(_StrictModel):
     flatten_london: str
     display_timezone: str
     holiday_calendar_required: bool
+    timing_tolerances_seconds: TimingTolerances
+    flat_verification_deadline_seconds: float
 
     @field_validator(
         "startup_london",

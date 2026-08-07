@@ -178,6 +178,44 @@ therefore migrated **once** into an explicit
 
 It does not satisfy `--require-notify-confirmed`.
 
+## Laptop-phase operational rule (§31.5) — read this before every session
+
+**The MacBook must remain open and connected to AC power throughout the London
+session**, unless you have deliberately provisioned an Apple-supported
+closed-display configuration.
+
+Closing the lid in a configuration that causes clamshell sleep **invalidates
+the autonomous session**. This is not a style preference — it happened. On
+2026-08-05 and 2026-08-06 the machine entered `Clamshell Sleep` and the
+supervisor was suspended through repeated Sleep/DarkWake cycles; boundaries
+executed up to **76 minutes late**, including the inviolate 11:00 flatten, and
+the old validator reported both sessions as "nominal, 5/5 events clean".
+
+The supervisor now launches under `caffeinate -si` (adding
+`PreventSystemSleep` to the existing idle assertion). **That is defense in
+depth, not permission.** An assertion is a request to macOS, and the incident
+proved the machine can sleep anyway. The physical configuration is the control;
+the assertion is a backstop.
+
+What the runtime now does about it:
+
+- **Pre-startup** checks what macOS can actually prove — AC power, both sleep
+  assertions, and recent sleep history. It never claims to check lid state,
+  because macOS does not reliably expose it. Failing any check marks the
+  session **non-qualifying** for the stability gate.
+- **During the session** a suspension detector compares wall-clock against
+  monotonic progress. Time the monotonic clock did not see is suspension, and
+  it marks the session degraded and non-qualifying.
+- **Expired boundaries are never replayed as timely.** Every event is stamped
+  with its real execution instant and compared to its scheduled instant, so a
+  boundary reached late after a wake is classified LATE on its own evidence.
+- **Entry eligibility consults the wall clock, never the handler**, so a
+  suspended scheduler cannot extend the entry window past 10:30.
+
+If AC power disappears mid-session the runtime records the power-state
+failure, marks the session degraded and non-qualifying, alerts you, and remains
+fail closed.
+
 ## Database operations: backup, migrate, verify, sweep
 
 The database is never created as a side effect of a process starting.

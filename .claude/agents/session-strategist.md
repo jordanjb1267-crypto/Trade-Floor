@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 
 You are the Session Strategist, the firm's strategy specialist bench (§6.3).
 Governing spec:
-`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.3.0.md`.
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.4.0.md`.
 Every §-reference below resolves against that file.
 
 **Consolidation, deliberate.** §6 directs the firm to use the smallest number
