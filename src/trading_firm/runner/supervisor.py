@@ -32,8 +32,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trading_firm.notify.surface import NotificationKind
-from trading_firm.runner.schedule import LONDON, ScheduledEvent, SessionEvent, next_event
+from trading_firm.runner.schedule import (
+    _TRADING_WEEKDAYS,
+    LONDON,
+    ScheduledEvent,
+    SessionEvent,
+    next_event,
+)
 from trading_firm.runner.timing import (
+    REQUIRED_EVENTS,
     EventTiming,
     FlatState,
     SessionAuthority,
@@ -64,6 +71,15 @@ Sweep = Callable[["ScheduledEvent"], str]
 # slept through a DST transition, an NTP step, or a lid-close would otherwise
 # act on a wakeup computed under the old clock (§18 restart behaviour).
 MAX_SLEEP_SLICE_SECONDS = 300.0
+
+# §31.7 bounded-but-eventually-exhaustive recovery: at most this many missed
+# expected sessions are attested per recovery PASS. The backlog itself is never
+# truncated — each loop iteration processes the next batch, oldest first, until
+# every expected date since the operational epoch has its terminal artifact.
+# Bounding the PASS keeps a long-dead machine from doing all its bookkeeping in
+# one breath; bounding the BACKLOG would silently discard audit history, which
+# is the failure this constant must never reintroduce.
+MISSED_SESSION_BATCH_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -105,6 +121,7 @@ class SessionRecord:
     clock_regressions: int = 0
     health_verified: bool = False
     power_verified: bool = True
+    attestation_reasons: tuple[str, ...] = ()
 
     def note(
         self,
@@ -137,6 +154,7 @@ class SessionRecord:
             unacceptable_outcomes=frozenset(self.unacceptable),
             authority_state=self.authority_state,
             boundaries_processed=len(self.timings),
+            extra_reasons=self.attestation_reasons,
         )
 
 
@@ -152,6 +170,7 @@ class Supervisor:
         heartbeat: Beat | None = None,
         sweep: Sweep | None = None,
         suspension: object | None = None,
+        epoch: dt.date | None = None,
     ) -> None:
         self._clock = clock
         self._probe = probe
@@ -162,6 +181,13 @@ class Supervisor:
         self._heartbeat = heartbeat
         self._sweep = sweep
         self._suspension = suspension
+        # §31.7 operational epoch: the date of the firm's authoritative durable
+        # baseline (database initialization, read by the composition script).
+        # None means genuinely uninitialized — nothing was ever expected of
+        # this deployment, so nothing is attested. The epoch is NOT derived
+        # from report files: an emptied report directory is an evidence gap
+        # to be recovered, never proof of a fresh install.
+        self._epoch = epoch
         # ONE latch per session (§31.6). Rebuilt only when the session DATE
         # changes; never per boundary, because reconstructing it would discard
         # the monotonic state that makes a prohibition irreversible.
@@ -251,13 +277,156 @@ class Supervisor:
         """Live new-entry authority. False forever once 10:30 is observed."""
         return self._latch is not None and self._latch.entry_permitted
 
+    # ------------------------------------------------- §31.7 missed sessions
+
+    def attest_missed_sessions(self, current: ScheduledEvent) -> list[Path]:
+        """Ensure every expected past trading date has exactly one terminal
+        report (§31.7). Idempotent: the report FILE is the durable guard, so a
+        restart can never duplicate an attestation, and a date whose normal
+        report exists is never touched.
+
+        "Never both" holds structurally: the normal report for date D is
+        written only by D's own flatten handler while D is the current
+        session; this scan covers only dates strictly BEFORE the current
+        session date, whose handlers can never run again.
+
+        Expected dates are trading weekdays per the repository's deliberate
+        calendar position (schedule.py): holidays RUN and fail closed with a
+        report, so a weekday with no report is always a missed session, never
+        a market-closed day. Weekends are skipped and never attested.
+        """
+        written: list[Path] = []
+
+        # An open record from an earlier date is the in-process wake case:
+        # terminalize it first, with whatever boundaries it actually observed.
+        if self._record is not None and self._record.session_date < current.session_date:
+            written.append(self._attest_one(self._record))
+            self._record = None
+
+        # Restart / multi-day-down case: the recovery backlog is every expected
+        # trading date strictly after the operational epoch and strictly before
+        # the current session, whose report file is absent. Derived fresh each
+        # pass from epoch + report-dir state, so it is deterministic, survives
+        # restarts, and needs no separate backlog store. Oldest first, at most
+        # MISSED_SESSION_BATCH_LIMIT per pass; the next loop iteration picks up
+        # the next batch until the backlog is empty — bounded per pass,
+        # eventually exhaustive over the history (§31.7).
+        backlog = self.attestation_backlog(current.session_date)
+        batch = backlog[:MISSED_SESSION_BATCH_LIMIT]
+        for day in batch:
+            written.append(
+                self._attest_one(SessionRecord(session_date=day), notify_each=False)
+            )
+        attested = [w for w in written if w is not None]
+        if batch:
+            # One summary per recovery pass, not one message per historical
+            # date (owner amendment): the owner learns what was recovered and
+            # what remains, without a day-per-message flood.
+            remaining = len(backlog) - len(batch)
+            self._notify(
+                NotificationKind.RISK_HALT,
+                f"MISSED-SESSION RECOVERY: attested {len(batch)} expected "
+                f"session(s) ({batch[0]} .. {batch[-1]}) as MISSED/NON-QUALIFYING; "
+                f"{remaining} older-than-batch session(s) still unresolved"
+                + (" — recovery continues next pass." if remaining else ". Backlog clear."),
+            )
+        return attested
+
+    def attestation_backlog(self, before: dt.date) -> list[dt.date]:
+        """Expected dates after the epoch, before `before`, with no report.
+
+        Oldest first — deterministic recovery ordering. Empty when the epoch is
+        unset (uninitialized deployment) or when every expected date has its
+        terminal artifact. Weekends are never expected (schedule calendar).
+        """
+        if self._epoch is None:
+            return []
+        missing: list[dt.date] = []
+        day = self._epoch + dt.timedelta(days=1)
+        while day < before:
+            if day.weekday() in _TRADING_WEEKDAYS:
+                if not (self._report_dir / f"{day}-session.json").exists():
+                    missing.append(day)
+            day += dt.timedelta(days=1)
+        return missing
+
+    def _attest_one(self, record: SessionRecord, notify_each: bool = True) -> Path | None:
+        """Write the terminal attestation for one missed session.
+
+        A LOCAL latch is driven for the missed date — never `self._latch`,
+        which belongs to the current session and must not be clobbered. The
+        latch observes the CURRENT clock (far past that date's flatten), so
+        authority evidence reads flattening-or-later, honestly: nothing here
+        fabricates an execution timestamp for a handler that never ran.
+
+        Flat state comes from the existing read-only reconciliation probe,
+        performed NOW — recovery-time evidence, labelled as such. A verified
+        flat account today does not make the missed session timely (§31.2),
+        and it cannot: the absent boundaries alone keep the verdict degraded
+        and NON_QUALIFYING.
+        """
+        path = self._report_dir / f"{record.session_date}-session.json"
+        if path.exists():
+            return None  # durable idempotency: never overwrite any report
+
+        now = self._now()
+        boundaries = self._clock.boundaries(record.session_date)
+        latch = SessionAuthorityLatch(
+            activation_at=boundaries["activation"],
+            entry_cutoff_at=boundaries["entry_cutoff"],
+            flatten_at=boundaries["flatten"],
+        )
+        latch.observe(now.astimezone(LONDON))
+        latch.begin_reconciliation()
+
+        health = self._checked_probe()
+        if health.broker_reachable and health.account_flat:
+            record.flat_state = FlatState.VERIFIED_FLAT
+            latch.close()
+        elif health.broker_reachable:
+            record.flat_state = FlatState.VERIFIED_NON_FLAT
+            latch.halt()
+        else:
+            record.flat_state = FlatState.UNVERIFIED
+            latch.halt()
+        record.authority_state = str(latch.state)
+        record.clock_regressions = latch.regressions_observed
+        record.degraded = True
+        record.suspension_detected = True
+        missed = [e.value for e in REQUIRED_EVENTS if e not in record.timings]
+        record.attestation_reasons = (
+            "SESSION WINDOW MISSED: runtime suspended or offline through required "
+            f"boundaries ({', '.join(missed)}); attested {now.isoformat()} with "
+            f"recovery-time flat-state evidence",
+        )
+
+        self._write_report(record)
+        if notify_each:
+            verdict = record.verdict()
+            # Same mapping as the flatten severe path: unverified means the
+            # broker did not answer (data failure); verified-non-flat and plain
+            # missed are risk conditions. Batch recovery passes suppress this
+            # and send one summary instead (owner amendment).
+            kind = (
+                NotificationKind.DATA_OR_BROKER_FAILURE
+                if record.flat_state is FlatState.UNVERIFIED
+                else NotificationKind.RISK_HALT
+            )
+            self._notify(kind, "MISSED SESSION — " + verdict.summary(record.session_date))
+            self._notify(
+                NotificationKind.DAILY_SESSION_REPORT, verdict.summary(record.session_date)
+            )
+        return path
+
     # ------------------------------------------------------------------ events
 
     def handle(self, scheduled: ScheduledEvent) -> None:
         """Run one session event. Public so tests drive the lifecycle directly."""
         # §31.6 mandatory ordering: authority advances from the wall clock
-        # before any session-state-dependent action is evaluated.
+        # before any session-state-dependent action is evaluated; §31.7
+        # attestation settles prior sessions before this one is touched.
         self.advance_authority(scheduled.session_date)
+        self.attest_missed_sessions(scheduled)
         if self._record is None or self._record.session_date != scheduled.session_date:
             self._record = SessionRecord(session_date=scheduled.session_date)
         record = self._record
@@ -427,6 +596,9 @@ class Supervisor:
             scheduled = next_event(self._clock, self._now())
             self._sample_suspension()
             self.advance_authority(scheduled.session_date)
+            # §31.7: settle every prior expected session before this one
+            # proceeds — authority first, attestation second, events third.
+            self.attest_missed_sessions(scheduled)
             self._beat("waiting")
             while not self.stopping:
                 remaining = scheduled.seconds_until(self._now())

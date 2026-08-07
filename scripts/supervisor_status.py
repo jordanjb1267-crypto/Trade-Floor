@@ -30,6 +30,7 @@ import datetime as dt
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,8 @@ from trading_firm.runner import liveness  # noqa: E402
 
 LABEL = "com.tradefloor.supervisor"
 LOG_DIR = REPO / "logs"
+REPORT_DIR = REPO / "reports" / "ops"
+DB_PATH = REPO / "database" / "firm.sqlite"
 OPS_STATE = REPO / "state" / "ops"
 # Readiness reads the CANONICAL marker — refreshed by every successful owner
 # notification — not the startup-dedup marker. Reading the startup marker was
@@ -91,6 +94,43 @@ def parse_launchctl(text: str, *, found: bool) -> liveness.LaunchdStatus:
         # a long-runner, and NOT the same as exit code 0.
         last_exit_code=int(exit_match.group(1)) if exit_match else None,
     )
+
+
+def _operational_epoch() -> dt.date | None:
+    """Database-initialization date; None when genuinely uninitialized."""
+    if not DB_PATH.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?immutable=1", uri=True)
+        try:
+            row = conn.execute("SELECT MIN(applied_at) FROM schema_migrations").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if not row or not row[0]:
+        return None
+    try:
+        return dt.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _attestation_backlog_count(now: dt.datetime) -> int | None:
+    """Unresolved expected sessions since the epoch. None = uninitialized."""
+    epoch = _operational_epoch()
+    if epoch is None:
+        return None
+    from zoneinfo import ZoneInfo
+
+    today = now.astimezone(ZoneInfo("Europe/London")).date()
+    missing = 0
+    day = epoch + dt.timedelta(days=1)
+    while day < today:
+        if day.weekday() < 5 and not (REPORT_DIR / f"{day}-session.json").exists():
+            missing += 1
+        day += dt.timedelta(days=1)
+    return missing
 
 
 def read_launchd(label: str) -> liveness.LaunchdStatus:
@@ -157,6 +197,12 @@ def main(argv: list[str] | None = None) -> int:
         now=now,
     )
 
+    # §31.7 historical continuity: while any expected session since the
+    # operational epoch lacks its terminal artifact, the deployment must not
+    # read as fully reconciled. Read-only: epoch from the database baseline,
+    # backlog from report-file existence and weekday arithmetic.
+    backlog_count = _attestation_backlog_count(now)
+
     interpreter_ok = True
     interpreter_note = ""
     if args.expect_interpreter:
@@ -183,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
                     "python_version": heartbeat.python_version if heartbeat else None,
                     "interpreter_ok": interpreter_ok,
                     "notify_state": str(notify_state),
+                    "attestation_backlog": backlog_count,
                 },
                 indent=2,
                 sort_keys=True,
@@ -197,6 +244,15 @@ def main(argv: list[str] | None = None) -> int:
         if launchd.loaded:
             print(f"  launchd      runs={launchd.runs} running={launchd.running}")
         print(f"  notify       {notify_state}")
+        if backlog_count is None:
+            print("  continuity   (uninitialized — no operational epoch)")
+        elif backlog_count == 0:
+            print("  continuity   reconciled — every expected session attested")
+        else:
+            print(
+                f"  continuity   INCOMPLETE — {backlog_count} expected session(s) "
+                f"since the epoch lack a terminal report"
+            )
         if interpreter_note:
             print(f"  WARNING      {interpreter_note}")
 

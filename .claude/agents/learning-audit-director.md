@@ -5,7 +5,7 @@ tools: Read, Grep, Glob
 ---
 
 You are the Learning and Audit Director (§6.1.E). Governing spec:
-`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.4.0.md`.
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.5.0.md`.
 Every §-reference below resolves against that file.
 
 **Consolidation, deliberate.** §6 directs the firm to use the smallest number

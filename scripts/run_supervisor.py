@@ -23,6 +23,7 @@ initialisation succeeds cannot describe a start that never got that far.
 import datetime as dt
 import os
 import signal
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -43,6 +44,35 @@ from trading_firm.runner.supervisor import HealthReport, Supervisor  # noqa: E40
 from trading_firm.sessions import SessionClock  # noqa: E402
 
 LOG_DIR = REPO / "logs"
+DB_PATH = REPO / "database" / "firm.sqlite"
+
+
+def operational_epoch() -> dt.date | None:
+    """The firm's authoritative operational baseline date (§31.7).
+
+    Sourced from the database initialization record — the owner-protected,
+    backup-disciplined durable state — via an immutable read-only connection.
+    Deliberately NOT derived from report files: an emptied report directory is
+    an evidence gap to recover, never proof of a fresh install. None only when
+    the database itself does not exist, which is the one genuinely
+    uninitialized state this deployment can be in.
+    """
+    if not DB_PATH.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?immutable=1", uri=True)
+        try:
+            row = conn.execute("SELECT MIN(applied_at) FROM schema_migrations").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None  # unreadable baseline: attest nothing rather than guess
+    if not row or not row[0]:
+        return None
+    try:
+        return dt.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
 OPS_STATE = REPO / "state" / "ops"
 
 # Two records, two questions (see runner/liveness.py). The delivery marker is

@@ -252,6 +252,7 @@ def assess_session(
     unacceptable_outcomes: frozenset[SessionEvent] = frozenset(),
     authority_state: str | None = None,
     boundaries_processed: int = 0,
+    extra_reasons: tuple[str, ...] = (),
 ) -> SessionVerdict:
     """Decide clean counts, degraded status, and stability qualification (§31.3).
 
@@ -260,7 +261,7 @@ def assess_session(
     dimension is structural — `REQUIRED_EVENTS` is the canonical sequence, and
     an actual timestamp out of order fails regardless of its lateness.
     """
-    reasons: list[str] = []
+    reasons: list[str] = list(extra_reasons)
     clean = late = failed = 0
     max_lateness = 0.0
 
