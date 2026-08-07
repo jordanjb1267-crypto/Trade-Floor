@@ -1136,3 +1136,49 @@ as owner-approved defense in depth — explicitly NOT represented as permission
 for, or a reliable defence against, unsupported closed-display operation. The
 physical rule is the control: the machine stays open and on AC, and a lid-close
 sleep automatically disqualifies the session.
+
+**2026-08-07 · §31.7 ratified: missed-session attestation [A-5].** Authority
+acceptance testing confirmed a pre-existing scheduler gap: a runtime suspended
+through every remaining boundary wakes to `next_event` returning the next
+trading day, so the missed session's flatten handler never runs and **no
+report is written**. The A-4 latch keeps authority safe through such a wake;
+nothing kept the audit trail complete — a fully-slept-through session simply
+vanished. §31.7 (spec v2.5.0) adds the invariant: every expected trading
+session resolves to exactly one durable terminal report — the normal one, or
+a MISSED / NON-QUALIFYING attestation. Never both, never neither, idempotent
+across restarts with the report file itself as the guard.
+
+Calendar authority was NOT invented: expected sessions are trading weekdays
+per `runner/schedule.py`'s deliberate position (holidays run and fail closed
+WITH a report, N-11), so a weekday without a report is always a missed
+session. Weekends are never attested. Recovery is bounded to ten trading days,
+anchored on the newest report on disk; a fresh deployment attests nothing.
+Attestations drive a recovery-time latch honestly (no fabricated handler
+timestamps), reuse the read-only flat-state probe with §31.2's three states
+kept distinct and labelled recovery-time, and can never read nominal,
+qualifying, or clean — the absent boundaries alone keep them degraded. A late
+flat verification does not make a missed session timely. Delivered under the
+existing §19 severe kinds; notifier TTL untouched.
+
+Scope held: no timing-tolerance, latch, power, strategy, risk, execution,
+GMIS, migration, or live-permission change. Streak unaffected: 0/5.
+
+**2026-08-07 · A-5 hardened on owner review: exhaustive recovery + database
+epoch.** Two amendments before push. (1) The ten-day recovery bound was
+re-scoped from a backlog truncation to a PER-PASS batch limit: the backlog —
+every expected weekday after the epoch lacking a report — is derived fresh
+each pass and processed oldest-first, ten per pass, until empty. Thirty
+missing sessions resolve as 10+10+10, never as 10-and-forget. One summary
+notification per pass, not one per historical date. While a backlog remains,
+`supervisor_status.py` reports continuity INCOMPLETE. (2) "No reports exist"
+is no longer read as a fresh install — that reading would have made report-
+directory deletion indistinguishable from a new deployment, an evidence-
+erasure hole. The operational epoch is now the DATABASE initialization date
+(`MIN(applied_at)` in `schema_migrations`, read immutably), the owner-
+protected durable baseline that report deletion, restarts, and crashes cannot
+reset. Database present + reports absent = evidence gap, recovered; database
+absent = genuinely uninitialized, nothing attested. Spec v2.5.0 §31.7 amended
+in place (still unmerged, same review cycle) with the core invariant: for
+every expected session after the baseline, eventually exactly one durable
+terminal attestation — never zero, never two. The backlog is an audit
+obligation only and grants no trading authority.

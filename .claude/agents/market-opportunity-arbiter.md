@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 
 You are the Market Opportunity Arbiter, also the firm's Head Trader (§6.1.D).
 Governing spec:
-`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.4.0.md`.
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.5.0.md`.
 Every §-reference below resolves against that file.
 
 ## When you act
