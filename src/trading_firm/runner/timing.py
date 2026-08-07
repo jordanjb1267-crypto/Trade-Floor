@@ -250,6 +250,8 @@ def assess_session(
     health_verified: bool = True,
     power_verified: bool = True,
     unacceptable_outcomes: frozenset[SessionEvent] = frozenset(),
+    authority_state: str | None = None,
+    boundaries_processed: int = 0,
 ) -> SessionVerdict:
     """Decide clean counts, degraded status, and stability qualification (§31.3).
 
@@ -323,9 +325,28 @@ def assess_session(
     )
     # §31.3: qualification is stricter still — power readiness is required for
     # the stability gate even when the session itself was otherwise sound.
-    qualifying = not degraded and power_verified
+    # Owner requirement 8: a session cannot qualify unless the authority
+    # control left evidence that it actually ran. This exists because the
+    # 2026-08-07 session executed perfectly and still reported QUALIFYING while
+    # the latch was dead code — unit-tested, instantiated by nobody. Absence of
+    # evidence is not evidence of control.
+    authority_evidence_ok = True
+    if boundaries_processed:
+        if authority_state is None:
+            authority_evidence_ok = False
+            reasons.append("no authority latch evidence: the control was never instantiated")
+        elif authority_state == str(SessionAuthority.PRE_SESSION):
+            authority_evidence_ok = False
+            reasons.append(
+                f"authority still {SessionAuthority.PRE_SESSION} after "
+                f"{boundaries_processed} boundaries: the latch was never driven"
+            )
+
+    qualifying = not degraded and power_verified and authority_evidence_ok
     if degraded:
         qualification_reason = "SESSION DEGRADED"
+    elif not authority_evidence_ok:
+        qualification_reason = "AUTHORITY EVIDENCE MISSING"
     elif not power_verified:
         # The named case from the owner amendment: sound execution, unprovable
         # machine. Reported as its own reason so it can never read as a
@@ -357,6 +378,14 @@ class SessionAuthority(enum.StrEnum):
 
     Ordered and MONOTONIC. The rank below is the whole point: authority only
     ever advances, so a prohibition once reached can never be un-reached.
+
+    §14's lifecycle also names `REVIEW`, between RECONCILIATION and CLOSED.
+    It is deliberately NOT an authority state here: review is post-session
+    analysis (§15's improvement loop), performed by people and agents after
+    the session has ended, and it gates nothing the supervisor may do. Adding
+    it would invent a rank that no permission depends on. A successful session
+    therefore terminates at `CLOSED`, and `REVIEW` remains a §14 workflow
+    phase rather than an authority level.
     """
 
     PRE_SESSION = "pre_session"
@@ -364,7 +393,7 @@ class SessionAuthority(enum.StrEnum):
     MANAGE_ONLY = "manage_only"  # past 10:30 — no new entries, ever again today
     FLATTENING = "flattening"  # past 11:00 — out of ACTIVE, permanently
     RECONCILIATION = "reconciliation"  # §14: verifying the account after flatten
-    CLOSED = "closed"
+    CLOSED = "closed"  # terminal for a successful session — see note below
     HALTED = "halted"  # §14: any critical failure. Terminal, and highest rank.
 
 

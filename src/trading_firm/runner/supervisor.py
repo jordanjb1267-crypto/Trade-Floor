@@ -32,10 +32,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trading_firm.notify.surface import NotificationKind
-from trading_firm.runner.schedule import ScheduledEvent, SessionEvent, next_event
+from trading_firm.runner.schedule import LONDON, ScheduledEvent, SessionEvent, next_event
 from trading_firm.runner.timing import (
     EventTiming,
     FlatState,
+    SessionAuthority,
+    SessionAuthorityLatch,
     SessionVerdict,
     assess_session,
     evaluate,
@@ -133,6 +135,8 @@ class SessionRecord:
             health_verified=self.health_verified,
             power_verified=self.power_verified,
             unacceptable_outcomes=frozenset(self.unacceptable),
+            authority_state=self.authority_state,
+            boundaries_processed=len(self.timings),
         )
 
 
@@ -158,6 +162,11 @@ class Supervisor:
         self._heartbeat = heartbeat
         self._sweep = sweep
         self._suspension = suspension
+        # ONE latch per session (§31.6). Rebuilt only when the session DATE
+        # changes; never per boundary, because reconstructing it would discard
+        # the monotonic state that makes a prohibition irreversible.
+        self._latch: SessionAuthorityLatch | None = None
+        self._latch_date: dt.date | None = None
         self._record: SessionRecord | None = None
         self.stopping = False
 
@@ -192,13 +201,67 @@ class Supervisor:
                 detail=f"{type(error).__name__}: {error}",
             )
 
+    # ----------------------------------------------------- §31.6 authority
+
+    def latch_for(self, session_date: dt.date) -> SessionAuthorityLatch:
+        """The session's single latch, built from the governing §14 boundaries.
+
+        Keyed on the session DATE: a genuinely new trading session gets a fresh
+        latch, and every iteration within one session gets the same object. A
+        latch rebuilt per boundary would reset its monotonic state and silently
+        restore permissions the wall clock had already withdrawn.
+        """
+        if self._latch is None or self._latch_date != session_date:
+            b = self._clock.boundaries(session_date)
+            self._latch = SessionAuthorityLatch(
+                activation_at=b["activation"],
+                entry_cutoff_at=b["entry_cutoff"],
+                flatten_at=b["flatten"],
+            )
+            self._latch_date = session_date
+        return self._latch
+
+    def advance_authority(
+        self, session_date: dt.date, now: dt.datetime | None = None
+    ) -> SessionAuthority:
+        """Advance authority from the AUTHORITATIVE wall clock.
+
+        Called by `run_forever` on every iteration BEFORE any scheduled event
+        is processed, and again at the top of `handle()` so a direct call
+        (`--once`, tests) cannot bypass it. The loop is the mechanism; the
+        call in `handle()` is a backstop, not the design — authority must not
+        depend on a handler running, which is the whole point of §31.6.
+
+        Converted to Europe/London explicitly: the boundaries are London
+        instants, and comparing against a differently-zoned clock is how a
+        timezone anomaly becomes a permission bug.
+        """
+        moment = (now if now is not None else self._now()).astimezone(LONDON)
+        latch = self.latch_for(session_date)
+        state = latch.observe(moment)
+        if self._record is not None and self._record.session_date == session_date:
+            # Report evidence is SOURCED from the live latch, never synthesized,
+            # so a report can prove the runtime control was actually exercised.
+            self._record.authority_state = str(state)
+            self._record.clock_regressions = latch.regressions_observed
+        return state
+
+    @property
+    def entry_permitted(self) -> bool:
+        """Live new-entry authority. False forever once 10:30 is observed."""
+        return self._latch is not None and self._latch.entry_permitted
+
     # ------------------------------------------------------------------ events
 
     def handle(self, scheduled: ScheduledEvent) -> None:
         """Run one session event. Public so tests drive the lifecycle directly."""
+        # §31.6 mandatory ordering: authority advances from the wall clock
+        # before any session-state-dependent action is evaluated.
+        self.advance_authority(scheduled.session_date)
         if self._record is None or self._record.session_date != scheduled.session_date:
             self._record = SessionRecord(session_date=scheduled.session_date)
         record = self._record
+        self.advance_authority(scheduled.session_date)
         at = self._now()
 
         if scheduled.event is SessionEvent.PRE_STARTUP:
@@ -275,6 +338,17 @@ class Supervisor:
             else:
                 record.flat_state = FlatState.VERIFIED_FLAT
                 record.note(scheduled.event, at, "verified flat", scheduled.at)
+            # §14 lifecycle: FLATTENING -> RECONCILIATION -> CLOSED, or HALTED
+            # when flat state could not be proven (§31.2). Driven on the live
+            # latch so the report's terminal state is evidence, not a label.
+            latch = self.latch_for(scheduled.session_date)
+            latch.begin_reconciliation()
+            if record.flat_state is FlatState.VERIFIED_FLAT:
+                latch.close()
+            else:
+                latch.halt()
+            record.authority_state = str(latch.state)
+            record.clock_regressions = latch.regressions_observed
             self._write_report(record)
             verdict = record.verdict()
             if verdict.degraded:
@@ -341,7 +415,18 @@ class Supervisor:
         recomputes after every slice, so clock steps and DST transitions are
         absorbed within five minutes instead of compounding."""
         while not self.stopping:
+            # §31.6 MANDATORY ORDERING, every iteration:
+            #   (1) authoritative Europe/London time
+            #   (2) suspension / clock-regression evidence
+            #   (3) advance the session authority latch
+            #   (4) only then process scheduled events.
+            # The wall clock establishes authority; the handler does not. A
+            # handler that ran late must be incapable of restoring a permission
+            # the clock already withdrew, which is only guaranteed if authority
+            # advances BEFORE the handler is reached.
             scheduled = next_event(self._clock, self._now())
+            self._sample_suspension()
+            self.advance_authority(scheduled.session_date)
             self._beat("waiting")
             while not self.stopping:
                 remaining = scheduled.seconds_until(self._now())
@@ -352,10 +437,17 @@ class Supervisor:
                 # wall-clock time the monotonic clock did not see, and the only
                 # moment we can observe it is on the wake that follows.
                 self._sample_suspension()
+                # Advance on every wake, so a session that resumes at 10:54
+                # after a suspension is MANAGE_ONLY before anything else runs.
+                self.advance_authority(scheduled.session_date)
                 # One beat per slice, so a stalled loop is visible within a
                 # slice rather than at the next session boundary hours away.
                 self._beat("waiting")
             if not self.stopping:
+                # Final advancement from the CURRENT clock immediately before
+                # the handler — the boundary may have been crossed while the
+                # last sleep slice was running.
+                self.advance_authority(scheduled.session_date)
                 self.handle(scheduled)
                 self._beat("handled")
 
