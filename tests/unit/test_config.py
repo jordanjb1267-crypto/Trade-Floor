@@ -114,3 +114,46 @@ class TestConstitutionalInvariants:
         raw["risk"]["surprise_knob"] = 1
         with pytest.raises(ValidationError):
             FirmConfig.model_validate(raw)
+
+
+class TestTimingToleranceCeilings:
+    """§31.1/§31.3 owner hardening: ordinary configuration may TIGHTEN a
+    tolerance but may never raise a hard-boundary tolerance beyond the ratified
+    maximum. A YAML edit alone must never make a grossly late hard boundary
+    score clean — that requires a spec amendment, owner approval, a schema
+    change, tests, and a separate reviewed PR."""
+
+    def _session(self, **overrides):
+        raw = yaml.safe_load(BASE_CONFIG_PATH.read_text())
+        data = copy.deepcopy(raw)
+        data["session"]["timing_tolerances_seconds"].update(overrides)
+        return FirmConfig.model_validate(data)
+
+    def test_the_ratified_baseline_validates(self) -> None:
+        config = self._session()
+        assert config.session.timing_tolerances_seconds.flatten == 5
+
+    @pytest.mark.parametrize("field", ["flatten", "entry_cutoff"])
+    def test_a_hard_boundary_cannot_be_widened_by_yaml(self, field) -> None:
+        with pytest.raises(ValidationError, match="handler jitter, not trading authority"):
+            self._session(**{field: 60})
+
+    def test_the_aug06_breach_cannot_be_configured_clean(self) -> None:
+        """4568 s of lateness must stay a breach no matter what YAML says."""
+        with pytest.raises(ValidationError):
+            self._session(flatten=5000)
+
+    @pytest.mark.parametrize("field", ["flatten", "entry_cutoff", "activation"])
+    def test_tightening_is_always_allowed(self, field) -> None:
+        config = self._session(**{field: 0})
+        assert getattr(config.session.timing_tolerances_seconds, field) == 0
+
+    def test_activation_and_checkpoints_have_ceilings_too(self) -> None:
+        with pytest.raises(ValidationError, match="activation tolerance"):
+            self._session(activation=120)
+        with pytest.raises(ValidationError, match="briefing tolerance"):
+            self._session(briefing=600)
+
+    def test_a_negative_tolerance_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="may not be negative"):
+            self._session(flatten=-1)

@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash
 ---
 
 You are the Chief Quant and Validation agent (§6.1.B). Governing spec:
-`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.3.0.md`.
+`docs/spec/CLAUDE_ADAPTIVE_TRADING_FIRM_MASTER_HANDOFF_v2.4.0.md`.
 Every §-reference below resolves against that file.
 
 **Consolidation, deliberate.** §6 instructs the firm to "use the smallest

@@ -33,6 +33,13 @@ from pathlib import Path
 
 from trading_firm.notify.surface import NotificationKind
 from trading_firm.runner.schedule import ScheduledEvent, SessionEvent, next_event
+from trading_firm.runner.timing import (
+    EventTiming,
+    FlatState,
+    SessionVerdict,
+    assess_session,
+    evaluate,
+)
 from trading_firm.sessions.clock import SessionClock
 
 # Injected dependency shapes. The notifier returns bool (delivered) — §18: a
@@ -86,10 +93,46 @@ class SessionRecord:
     session_date: dt.date
     events: list[dict] = field(default_factory=list)
     degraded: bool = False
+    # §31: scheduled and actual instants are both retained, never overwritten,
+    # so a report stays auditable long after the session.
+    timings: dict[SessionEvent, EventTiming] = field(default_factory=dict)
+    flat_state: FlatState = FlatState.UNVERIFIED
+    unacceptable: set[SessionEvent] = field(default_factory=set)
+    suspension_detected: bool = False
+    authority_state: str = "pre_session"
+    clock_regressions: int = 0
+    health_verified: bool = False
+    power_verified: bool = True
 
-    def note(self, event: SessionEvent, at: dt.datetime, outcome: str) -> None:
-        self.events.append(
-            {"event": event.value, "at": at.isoformat(), "outcome": outcome}
+    def note(
+        self,
+        event: SessionEvent,
+        at: dt.datetime,
+        outcome: str,
+        scheduled_at: dt.datetime | None = None,
+    ) -> None:
+        timing = None
+        if scheduled_at is not None and event not in self.timings:
+            # First execution of this boundary is the one timed. Later notes
+            # (the §30.9 sweep appends one) annotate the same boundary and must
+            # not restate or improve its timing verdict.
+            timing = evaluate(event, scheduled_at, at)
+            self.timings[event] = timing
+        entry = {"event": event.value, "at": at.isoformat(), "outcome": outcome}
+        if timing is not None:
+            entry["scheduled_at"] = timing.scheduled_at.isoformat()
+            entry["lateness_s"] = round(timing.lateness_seconds, 3)
+            entry["timing_status"] = str(timing.status)
+        self.events.append(entry)
+
+    def verdict(self) -> SessionVerdict:
+        return assess_session(
+            timings=self.timings,
+            flat_state=self.flat_state,
+            suspension_detected=self.suspension_detected,
+            health_verified=self.health_verified,
+            power_verified=self.power_verified,
+            unacceptable_outcomes=frozenset(self.unacceptable),
         )
 
 
@@ -104,6 +147,7 @@ class Supervisor:
         sleep: Sleep,
         heartbeat: Beat | None = None,
         sweep: Sweep | None = None,
+        suspension: object | None = None,
     ) -> None:
         self._clock = clock
         self._probe = probe
@@ -113,6 +157,7 @@ class Supervisor:
         self._sleep = sleep
         self._heartbeat = heartbeat
         self._sweep = sweep
+        self._suspension = suspension
         self._record: SessionRecord | None = None
         self.stopping = False
 
@@ -158,7 +203,8 @@ class Supervisor:
 
         if scheduled.event is SessionEvent.PRE_STARTUP:
             health = self._checked_probe()
-            record.note(scheduled.event, at, health.summary())
+            record.note(scheduled.event, at, health.summary(), scheduled.at)
+            record.health_verified = health.healthy
             if health.healthy:
                 self._notify(
                     NotificationKind.SESSION_START_HEALTH,
@@ -166,6 +212,7 @@ class Supervisor:
                 )
             else:
                 record.degraded = True
+                record.unacceptable.add(scheduled.event)
                 self._notify(
                     NotificationKind.DATA_OR_BROKER_FAILURE,
                     f"{scheduled.session_date} pre-startup health FAILED — session "
@@ -185,7 +232,7 @@ class Supervisor:
             # and a raising sweep is a recorded failure, never a crash —
             # surveillance observes the session and must not be able to end it.
             outcome = "skipped: session degraded" if record.degraded else "boundary kept"
-            record.note(scheduled.event, at, outcome)
+            record.note(scheduled.event, at, outcome, scheduled.at)
             if self._sweep is not None and not record.degraded:
                 try:
                     record.note(scheduled.event, at, f"sweep: {self._sweep(scheduled)}")
@@ -196,31 +243,52 @@ class Supervisor:
                     )
 
         elif scheduled.event is SessionEvent.ENTRY_CUTOFF:
-            record.note(scheduled.event, at, "manage-only from here (§14)")
+            record.note(scheduled.event, at, "manage-only from here (§14)", scheduled.at)
 
         elif scheduled.event is SessionEvent.FLATTEN:
             # Runs on degraded days too: "could not verify flat" must reach the
             # owner, not be skipped along with everything else (§14, F-5).
             health = self._checked_probe()
             if not health.broker_reachable:
-                record.note(scheduled.event, at, f"UNVERIFIED: {health.summary()}")
+                record.note(scheduled.event, at, f"UNVERIFIED: {health.summary()}", scheduled.at)
                 self._notify(
                     NotificationKind.DATA_OR_BROKER_FAILURE,
                     f"{scheduled.session_date} 11:00 flatten boundary: could NOT "
                     f"verify the account is flat — {health.summary()}. Check the "
                     f"broker directly (§14, F-5).",
                 )
+                # §31.2: could-not-verify is never nominal.
+                record.flat_state = FlatState.UNVERIFIED
+                record.degraded = True
+                record.unacceptable.add(scheduled.event)
             elif not health.account_flat:
-                record.note(scheduled.event, at, f"NOT FLAT: {health.summary()}")
+                record.note(scheduled.event, at, f"NOT FLAT: {health.summary()}", scheduled.at)
                 self._notify(
                     NotificationKind.RISK_HALT,
                     f"{scheduled.session_date} 11:00 flatten boundary: account is "
                     f"NOT flat ({health.open_position_count} open). The flatten "
                     f"boundary is inviolate — intervene now (§14, F-5).",
                 )
+                record.flat_state = FlatState.VERIFIED_NON_FLAT
+                record.degraded = True
+                record.unacceptable.add(scheduled.event)
             else:
-                record.note(scheduled.event, at, "verified flat")
+                record.flat_state = FlatState.VERIFIED_FLAT
+                record.note(scheduled.event, at, "verified flat", scheduled.at)
             self._write_report(record)
+            verdict = record.verdict()
+            if verdict.degraded:
+                # §31.1/§31.2: a hard-boundary breach or an unverified flat
+                # state takes the SEVERE path, not the routine daily report.
+                # RISK_HALT and DATA_OR_BROKER_FAILURE are the two §19 alert
+                # kinds; which one depends on whether the broker answered.
+                kind = (
+                    NotificationKind.DATA_OR_BROKER_FAILURE
+                    if verdict.flat_state is FlatState.UNVERIFIED
+                    else NotificationKind.RISK_HALT
+                )
+                self._notify(kind, "SESSION DEGRADED — " + verdict.summary(
+                    record.session_date))
             self._notify(
                 NotificationKind.DAILY_SESSION_REPORT,
                 self._daily_summary(record),
@@ -232,9 +300,25 @@ class Supervisor:
     def _write_report(self, record: SessionRecord) -> Path:
         self._report_dir.mkdir(parents=True, exist_ok=True)
         path = self._report_dir / f"{record.session_date}-session.json"
+        verdict = record.verdict()
         payload = {
             "session_date": record.session_date.isoformat(),
-            "degraded": record.degraded,
+            "degraded": verdict.degraded,
+            "nominal": verdict.nominal,
+            "qualifying": verdict.qualifying,
+            "session_health": str(verdict.health),
+            "qualification": str(verdict.qualification),
+            "qualification_reason": verdict.qualification_reason,
+            "authority_state": str(record.authority_state),
+            "clock_regressions": record.clock_regressions,
+            "required_event_count": verdict.required_event_count,
+            "clean_event_count": verdict.clean_event_count,
+            "late_event_count": verdict.late_event_count,
+            "failed_event_count": verdict.failed_event_count,
+            "max_lateness_s": round(verdict.max_lateness_seconds, 3),
+            "flat_state": str(verdict.flat_state),
+            "suspension_detected": verdict.suspension_detected,
+            "reasons": list(verdict.reasons),
             "events": record.events,
             "environment": "shadow",
             "orders_placed": 0,  # structurally: this process cannot place any
@@ -244,12 +328,11 @@ class Supervisor:
 
     @staticmethod
     def _daily_summary(record: SessionRecord) -> str:
-        status = "DEGRADED (failed closed)" if record.degraded else "nominal"
-        kept = sum(1 for e in record.events if "UNVERIFIED" not in e["outcome"])
-        return (
-            f"{record.session_date} shadow session complete: {status}, "
-            f"{kept}/{len(record.events)} events clean. Report written."
-        )
+        """§31.3/§31.4. Was a substring test over the outcome string, which
+        reported a flatten 73 minutes past an inviolate boundary as "nominal,
+        5/5 events clean" on 2026-08-05. The verdict now derives every number
+        and the headline from the same assessment, so they cannot disagree."""
+        return record.verdict().summary(record.session_date)
 
     # ------------------------------------------------------------------ loop
 
@@ -265,9 +348,32 @@ class Supervisor:
                 if remaining <= 0:
                     break
                 self._sleep(min(remaining, MAX_SLEEP_SLICE_SECONDS))
+                # §31.5: sample BEFORE recomputing the target. A suspension is
+                # wall-clock time the monotonic clock did not see, and the only
+                # moment we can observe it is on the wake that follows.
+                self._sample_suspension()
                 # One beat per slice, so a stalled loop is visible within a
                 # slice rather than at the next session boundary hours away.
                 self._beat("waiting")
             if not self.stopping:
                 self.handle(scheduled)
                 self._beat("handled")
+
+    # --------------------------------------------------------- §31.5 suspension
+
+    def _sample_suspension(self) -> None:
+        """Record a detected freeze on the live session, if one is open.
+
+        Expired boundaries are NOT replayed as timely: `handle()` timestamps
+        every event with the real wall clock and `timing.evaluate` compares it
+        to the scheduled instant, so a boundary reached late after a suspension
+        is classified LATE on its own evidence. This flag adds the reason.
+        """
+        if self._suspension is None:
+            return
+        try:
+            event = self._suspension.sample()
+        except Exception:  # noqa: BLE001, S110 — a detector must not end a session
+            return
+        if event is not None and self._record is not None:
+            self._record.suspension_detected = True

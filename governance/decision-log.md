@@ -1100,3 +1100,39 @@ halt-only with surveillance delivery gated MATERIAL-and-above; and the
 recurring cost delta is zero. The next rollout step that changes any of
 this requires its own documented approval (§30.12: no step may be skipped
 without documented approval).
+
+**2026-08-06 · §31 ratified: session timing and sleep integrity [A-4].**
+The 2026-08-05 and 2026-08-06 London shadow sessions executed their boundaries
+up to 76 minutes late — including the inviolate 11:00 flatten — and both were
+reported to the owner as "nominal, 5/5 events clean". Forensics found three
+defects: `caffeinate -i` asserts only `PreventUserIdleSystemSleep`, so a
+clamshell sleep suspended the supervisor through repeated Sleep/DarkWake
+cycles; the session validator counted an event clean whenever its outcome
+string omitted the substring "UNVERIFIED", so it could not see lateness at
+all; and `degraded` was set only by the pre-startup probe, so a flatten whose
+account verification returned HTTP 401 still reported nominal. The supervisor
+never crashed — `runs = 1` throughout — which is why nothing alerted.
+
+§14 fixed the boundaries to exact London instants and called flatten inviolate
+but never defined how late is too late, so there was no rule to enforce. The
+owner ratified one on 2026-08-06 and it is recorded as §31 in spec v2.4.0:
+checkpoint tolerances of 120 s (pre_startup, briefing), a 60 s permission
+tolerance (activation), and ZERO authority tolerance on both hard boundaries
+(entry_cutoff, flatten) with 5 s of handler jitter for the log only. Flat state
+became a three-value type — VERIFIED_FLAT / VERIFIED_NON_FLAT / UNVERIFIED —
+with a 11:01 verification deadline; the firm never infers a position it cannot
+prove nor flatness it cannot prove. "nominal" is now derived, not assigned, and
+is prohibited whenever any boundary exceeds tolerance, a hard boundary is
+missed, flat state is UNVERIFIED, health fails, or a suspension is detected.
+
+Stability qualification is consecutive and restarts at **0/5**: Aug 3 and Aug 4
+were sound, but Aug 5 and Aug 6 failed, and a consecutive requirement admits no
+partial credit. The earlier "2 of 5" reading was wrong and is withdrawn here.
+
+Scope held: no strategy logic, risk sizing, order authority, GMIS behaviour,
+database migration, or live permission changed. `live_allowed` remains empty
+and every activation flag remains false. The plist moves to `caffeinate -si`
+as owner-approved defense in depth — explicitly NOT represented as permission
+for, or a reliable defence against, unsupported closed-display operation. The
+physical rule is the control: the machine stays open and on AC, and a lid-close
+sleep automatically disqualifies the session.

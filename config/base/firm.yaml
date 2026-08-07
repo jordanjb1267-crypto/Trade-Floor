@@ -72,6 +72,17 @@ session:
   flatten_london: "11:00"
   display_timezone: America/Chicago
   holiday_calendar_required: true
+  # §31.1 owner-ratified execution tolerances (amendment A-4, 2026-08-06).
+  # Reporting and qualification only: these never widen a trading window.
+  # entry_cutoff and flatten carry ZERO authority tolerance; the seconds below
+  # are handler/initiation jitter for the log, per §31.1.
+  timing_tolerances_seconds:
+    pre_startup: 120
+    briefing: 120
+    activation: 60
+    entry_cutoff: 5
+    flatten: 5
+  flat_verification_deadline_seconds: 60
 
 # v2 §6/§6A/§6.8: the senior-trader pair may build situation-specific theses.
 # Live novelty is empty and exceptional risk is N0-only — an unvalidated idea
