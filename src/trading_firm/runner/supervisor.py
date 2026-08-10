@@ -72,6 +72,21 @@ Sweep = Callable[["ScheduledEvent"], str]
 # act on a wakeup computed under the old clock (§18 restart behaviour).
 MAX_SLEEP_SLICE_SECONDS = 300.0
 
+# Bounded, deterministic broker-verification retry (incident 2026-08-10; also
+# 2026-08-06). OANDA's practice authorization layer intermittently rejected a
+# valid token — on 08-10 it ACCEPTED the credential on GET /v3/accounts and
+# rejected the identical header on .../openPositions ~150 ms later, then
+# accepted it again after the session. A single-shot probe converts that
+# one-second server blip into a destroyed session: UNVERIFIED, HALTED, severe
+# alert, non-qualifying. §31.2 grants a 60-second verification window; using
+# ~30 s of it to re-ask the broker is resilience, not leniency. Fail-closed is
+# unchanged: exhausting the attempts still yields UNVERIFIED with everything
+# that follows from it, and a VERIFIED_NON_FLAT answer is a SUCCESSFUL probe
+# that is never retried into anything else. Fixed count, fixed delay, no
+# jitter — the repo's retry convention (notify/telegram.py).
+PROBE_ATTEMPTS = 3
+PROBE_RETRY_DELAY_SECONDS = 15.0
+
 # §31.7 bounded-but-eventually-exhaustive recovery: at most this many missed
 # expected sessions are attested per recovery PASS. The backlog itself is never
 # truncated — each loop iteration processes the next batch, oldest first, until
@@ -216,16 +231,49 @@ class Supervisor:
     # ------------------------------------------------------------------ probe
 
     def _checked_probe(self) -> HealthReport:
-        """Run the probe; a raising probe is a failed probe, never a crash."""
-        try:
-            return self._probe()
-        except Exception as error:  # noqa: BLE001 — §0.10: any failure fails closed
-            return HealthReport(
-                broker_reachable=False,
-                account_flat=False,
-                open_position_count=-1,
-                detail=f"{type(error).__name__}: {error}",
-            )
+        """Run the probe with bounded retry; a raising probe is a failed
+        probe, never a crash — and a transiently raising probe is re-asked
+        before the session is condemned on one answer.
+
+        The retry budget (2 x 15 s) sits inside both the §31.2 flat-state
+        verification window (60 s) and the checkpoint tolerance (120 s), and
+        boundary timing is unaffected either way: `handle()` captures the
+        event timestamp before this runs.
+        """
+        last_error: Exception | None = None
+        for attempt in range(1, PROBE_ATTEMPTS + 1):
+            try:
+                report = self._probe()
+            except Exception as error:  # noqa: BLE001 — §0.10: fail closed, but not on one blip
+                last_error = error
+                if attempt < PROBE_ATTEMPTS:
+                    self._sleep(PROBE_RETRY_DELAY_SECONDS)
+                continue
+            if attempt > 1:
+                # A transient occurred and resolved: keep the evidence in the
+                # session record rather than letting the recovery hide it.
+                report = HealthReport(
+                    broker_reachable=report.broker_reachable,
+                    account_flat=report.account_flat,
+                    open_position_count=report.open_position_count,
+                    currency=report.currency,
+                    detail="; ".join(
+                        part for part in (
+                            report.detail,
+                            f"verified on attempt {attempt}/{PROBE_ATTEMPTS}",
+                        ) if part
+                    ),
+                )
+            return report
+        return HealthReport(
+            broker_reachable=False,
+            account_flat=False,
+            open_position_count=-1,
+            detail=(
+                f"{type(last_error).__name__}: {last_error} "
+                f"(after {PROBE_ATTEMPTS} attempts)"
+            ),
+        )
 
     # ----------------------------------------------------- §31.6 authority
 
@@ -506,7 +554,10 @@ class Supervisor:
                 record.unacceptable.add(scheduled.event)
             else:
                 record.flat_state = FlatState.VERIFIED_FLAT
-                record.note(scheduled.event, at, "verified flat", scheduled.at)
+                # Carry the probe detail: a flat verification that needed a
+                # retry says so in the record (incident 2026-08-10).
+                outcome = "verified flat" + (f" ({health.detail})" if health.detail else "")
+                record.note(scheduled.event, at, outcome, scheduled.at)
             # §14 lifecycle: FLATTENING -> RECONCILIATION -> CLOSED, or HALTED
             # when flat state could not be proven (§31.2). Driven on the live
             # latch so the report's terminal state is evidence, not a label.
