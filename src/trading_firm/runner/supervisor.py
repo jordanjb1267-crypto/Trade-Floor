@@ -40,6 +40,7 @@ from trading_firm.runner.schedule import (
     next_event,
 )
 from trading_firm.runner.timing import (
+    POLICY,
     REQUIRED_EVENTS,
     EventTiming,
     FlatState,
@@ -48,6 +49,7 @@ from trading_firm.runner.timing import (
     SessionVerdict,
     assess_session,
     evaluate,
+    flat_verification_deadline,
 )
 from trading_firm.sessions.clock import SessionClock
 
@@ -72,20 +74,45 @@ Sweep = Callable[["ScheduledEvent"], str]
 # act on a wakeup computed under the old clock (§18 restart behaviour).
 MAX_SLEEP_SLICE_SECONDS = 300.0
 
-# Bounded, deterministic broker-verification retry (incident 2026-08-10; also
-# 2026-08-06). OANDA's practice authorization layer intermittently rejected a
-# valid token — on 08-10 it ACCEPTED the credential on GET /v3/accounts and
-# rejected the identical header on .../openPositions ~150 ms later, then
-# accepted it again after the session. A single-shot probe converts that
-# one-second server blip into a destroyed session: UNVERIFIED, HALTED, severe
-# alert, non-qualifying. §31.2 grants a 60-second verification window; using
-# ~30 s of it to re-ask the broker is resilience, not leniency. Fail-closed is
-# unchanged: exhausting the attempts still yields UNVERIFIED with everything
-# that follows from it, and a VERIFIED_NON_FLAT answer is a SUCCESSFUL probe
-# that is never retried into anything else. Fixed count, fixed delay, no
-# jitter — the repo's retry convention (notify/telegram.py).
+# Bounded, deterministic, DEADLINE-GOVERNED broker-verification retry
+# (incidents 2026-08-10 and 2026-08-06 — RC-15 PROBABLE: most consistent with
+# an external/OANDA-side transient authorization failure. Same process, same
+# credential, same host, same account, accepted immediately before and after,
+# no rotation, repeated signature — but we hold no broker-side telemetry, so
+# elimination is not certainty). On 08-10 the identical Authorization header
+# was accepted on GET /v3/accounts and rejected ~150 ms later on
+# .../openPositions. A single-shot probe converted that blip into UNVERIFIED,
+# HALTED, severe alert, non-qualifying.
+#
+# The retry is governed by the boundary's own window, never by accidental
+# urllib timing: an attempt starts only if it can legally complete before the
+# deadline under the per-attempt budget, the loop never sleeps past the
+# deadline, and — the load-bearing theorem — success is accepted as verified
+# ONLY when its completion time is at or before the deadline, so VERIFIED_FLAT
+# after the §31.2 deadline is unrepresentable regardless of how long a request
+# actually ran ("a later successful reconciliation does not retroactively make
+# the original flatten timely"). Fail-closed is unchanged: exhaustion, budget
+# starvation, and late success all route to UNVERIFIED. Fixed count, fixed
+# delay, no jitter — the repo's retry convention (notify/telegram.py).
 PROBE_ATTEMPTS = 3
 PROBE_RETRY_DELAY_SECONDS = 15.0
+# Worst case per attempt: account discovery + openPositions, each bounded by
+# the probe's request timeout (12 s in scripts/run_supervisor.py), plus margin.
+PROBE_ATTEMPT_BUDGET_SECONDS = 25.0
+
+
+class NonRetryableProbeError(RuntimeError):
+    """A locally-deterministic probe failure (missing or malformed credential,
+    invalid local configuration). Retrying cannot change the answer, so the
+    verification fails immediately — still closed, without spending the
+    window on a foregone conclusion."""
+
+
+class BrokerReadContractError(RuntimeError):
+    """A response that parsed but did not match the read-success schema — an
+    error body, a missing field, a wrong shape. Never interpreted as data;
+    retried like any transient, because a 5xx body and a momentary gateway
+    fault look identical from here."""
 
 # §31.7 bounded-but-eventually-exhaustive recovery: at most this many missed
 # expected sessions are attested per recovery PASS. The backlog itself is never
@@ -230,25 +257,65 @@ class Supervisor:
 
     # ------------------------------------------------------------------ probe
 
-    def _checked_probe(self) -> HealthReport:
-        """Run the probe with bounded retry; a raising probe is a failed
-        probe, never a crash — and a transiently raising probe is re-asked
-        before the session is condemned on one answer.
+    def _checked_probe(self, deadline: dt.datetime | None = None) -> HealthReport:
+        """Run the probe under the boundary's own verification window.
 
-        The retry budget (2 x 15 s) sits inside both the §31.2 flat-state
-        verification window (60 s) and the checkpoint tolerance (120 s), and
-        boundary timing is unaffected either way: `handle()` captures the
-        event timestamp before this runs.
+        Per attempt, in order: (1) refuse to START an attempt that cannot
+        legally complete before the deadline under PROBE_ATTEMPT_BUDGET_SECONDS;
+        (2) never sleep past the deadline; (3) accept a success as verification
+        only if its completion is at or before the deadline — a late success is
+        evidence for the record, never verification (§31.2). With no deadline
+        (recovery attestation), the bounded three-attempt behavior holds.
+
+        A NonRetryableProbeError fails immediately: a missing local credential
+        does not improve with repetition.
         """
         last_error: Exception | None = None
+        attempts_made = 0
         for attempt in range(1, PROBE_ATTEMPTS + 1):
+            if attempt > 1:
+                now = self._now()
+                if deadline is not None and (
+                    (now - deadline).total_seconds()
+                    + PROBE_RETRY_DELAY_SECONDS
+                    + PROBE_ATTEMPT_BUDGET_SECONDS
+                ) > 0:
+                    break  # neither the sleep nor the attempt fits the window
+                self._sleep(PROBE_RETRY_DELAY_SECONDS)
+            now = self._now()
+            if deadline is not None and (
+                (now - deadline).total_seconds() + PROBE_ATTEMPT_BUDGET_SECONDS
+            ) > 0:
+                break  # an attempt started now could not legally complete
+            attempts_made = attempt
             try:
                 report = self._probe()
+            except NonRetryableProbeError as error:
+                last_error = error
+                break  # deterministic locally: retrying cannot change it
             except Exception as error:  # noqa: BLE001 — §0.10: fail closed, but not on one blip
                 last_error = error
-                if attempt < PROBE_ATTEMPTS:
-                    self._sleep(PROBE_RETRY_DELAY_SECONDS)
                 continue
+            completed = self._now()
+            if deadline is not None and completed > deadline:
+                # §31.2: verification must COMPLETE by the deadline. The
+                # observation is preserved as evidence; verification is not
+                # granted. broker_reachable=False routes the UNVERIFIED path.
+                late_by = (completed - deadline).total_seconds()
+                observed = (
+                    "flat" if report.account_flat
+                    else f"{report.open_position_count} open position(s)"
+                )
+                return HealthReport(
+                    broker_reachable=False,
+                    account_flat=False,
+                    open_position_count=-1,
+                    detail=(
+                        f"verification completed {late_by:.0f}s AFTER the "
+                        f"authorized deadline (attempt {attempt}/{PROBE_ATTEMPTS}); "
+                        f"account observed {observed}, too late to verify (§31.2)"
+                    ),
+                )
             if attempt > 1:
                 # A transient occurred and resolved: keep the evidence in the
                 # session record rather than letting the recovery hide it.
@@ -265,14 +332,21 @@ class Supervisor:
                     ),
                 )
             return report
+        if isinstance(last_error, NonRetryableProbeError):
+            suffix = "(non-retryable local failure; no retry attempted)"
+        else:
+            suffix = f"(after {attempts_made} attempt(s))"
+        if deadline is not None:
+            suffix += " within the authorized verification window"
+        prefix = (
+            f"{type(last_error).__name__}: {last_error} " if last_error is not None
+            else "verification window exhausted before any attempt could run "
+        )
         return HealthReport(
             broker_reachable=False,
             account_flat=False,
             open_position_count=-1,
-            detail=(
-                f"{type(last_error).__name__}: {last_error} "
-                f"(after {PROBE_ATTEMPTS} attempts)"
-            ),
+            detail=prefix + suffix,
         )
 
     # ----------------------------------------------------- §31.6 authority
@@ -482,7 +556,14 @@ class Supervisor:
         at = self._now()
 
         if scheduled.event is SessionEvent.PRE_STARTUP:
-            health = self._checked_probe()
+            # §31.1: health may not be treated as timely past the checkpoint
+            # tolerance, so verification gets exactly that window — its own,
+            # never the flatten deadline.
+            health = self._checked_probe(
+                deadline=scheduled.at + dt.timedelta(
+                    seconds=POLICY[SessionEvent.PRE_STARTUP].tolerance_seconds
+                )
+            )
             record.note(scheduled.event, at, health.summary(), scheduled.at)
             record.health_verified = health.healthy
             if health.healthy:
@@ -528,7 +609,11 @@ class Supervisor:
         elif scheduled.event is SessionEvent.FLATTEN:
             # Runs on degraded days too: "could not verify flat" must reach the
             # owner, not be skipped along with everything else (§14, F-5).
-            health = self._checked_probe()
+            # §31.2: the authoritative deadline, 11:00 -> 11:01 London, from
+            # the repository's single deadline function.
+            health = self._checked_probe(
+                deadline=flat_verification_deadline(scheduled.at)
+            )
             if not health.broker_reachable:
                 record.note(scheduled.event, at, f"UNVERIFIED: {health.summary()}", scheduled.at)
                 self._notify(

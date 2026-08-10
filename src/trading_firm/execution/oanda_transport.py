@@ -63,7 +63,14 @@ _ORDER_STATE_MAP = {
 class OandaPracticeTransport:
     is_practice = True
 
-    def __init__(self, account_id: str | None = None):
+    def __init__(
+        self, account_id: str | None = None, timeout_seconds: float = 30.0
+    ):
+        # timeout_seconds bounds EACH request. The default preserves every
+        # existing caller; the supervisor's verification probe passes a
+        # tighter value so a retry schedule can be budgeted against the
+        # §31.2 verification window instead of accidental urllib timing.
+        self._timeout = timeout_seconds
         token = practice_token()
         self._headers = {
             "Authorization": f"Bearer {token}",
@@ -83,7 +90,7 @@ class OandaPracticeTransport:
             data=json.dumps(body).encode() if body is not None else None,
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as err:
             raw = err.read().decode(errors="replace")

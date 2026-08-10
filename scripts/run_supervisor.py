@@ -40,7 +40,12 @@ from trading_firm.notify.surface import (  # noqa: E402
 )
 from trading_firm.runner import liveness  # noqa: E402
 from trading_firm.runner.schedule import next_event  # noqa: E402
-from trading_firm.runner.supervisor import HealthReport, Supervisor  # noqa: E402
+from trading_firm.runner.supervisor import (  # noqa: E402
+    BrokerReadContractError,
+    HealthReport,
+    NonRetryableProbeError,
+    Supervisor,
+)
 from trading_firm.sessions import SessionClock  # noqa: E402
 
 LOG_DIR = REPO / "logs"
@@ -102,18 +107,50 @@ LEGACY_MARKER = OPS_STATE / "supervisor-startup-notify.json"
 ASSUMPTION_MARKER = OPS_STATE / "supervisor-startup-legacy-assumption.json"
 
 
+# Each verification request is bounded well below the §31.2 window so the
+# retry schedule in `_checked_probe` can be budgeted deterministically. Two
+# requests per probe worst case (account discovery + openPositions).
+PROBE_REQUEST_TIMEOUT_SECONDS = 12.0
+
+
 def probe() -> HealthReport:
     """Read-only practice-account check: reachable, and flat?
 
     Imported lazily so the supervisor module itself never links the execution
     package — the no-order-path acceptance test checks the module graph, and
     this composition file is where the read-only exception is made and seen.
+
+    STRICT read contract (incident review, blocker 2): the transport preserves
+    non-auth error bodies as ordinary dicts for the order path's sake, which
+    means a 500/404/400 with a JSON body reaches this function as a dict
+    WITHOUT a "positions" key. The old `.get("positions", [])` read that as an
+    empty position list — a broker ERROR verified the account FLAT. A missing
+    field must never imply an empty position set: the success schema is
+    required exactly, and anything else raises (and is therefore retried and,
+    on exhaustion, fails closed as UNVERIFIED).
+
+    A locally-deterministic credential failure is wrapped as non-retryable:
+    re-asking the broker cannot fix a missing or malformed local credential.
     """
+    from trading_firm.execution.credentials import CredentialError
     from trading_firm.execution.oanda_transport import OandaPracticeTransport
 
-    transport = OandaPracticeTransport()
-    positions = transport._request("GET", f"/v3/accounts/{transport._account_id}/openPositions")
-    open_positions = positions.get("positions", [])
+    try:
+        transport = OandaPracticeTransport(
+            timeout_seconds=PROBE_REQUEST_TIMEOUT_SECONDS
+        )
+    except CredentialError as error:
+        raise NonRetryableProbeError(str(error)) from error
+    response = transport._request(
+        "GET", f"/v3/accounts/{transport._account_id}/openPositions"
+    )
+    if not isinstance(response, dict) or not isinstance(response.get("positions"), list):
+        raise BrokerReadContractError(
+            "openPositions response did not match the success schema (no "
+            "'positions' list) — an error body, not a position set. Refusing "
+            "to interpret it as flat."
+        )
+    open_positions = response["positions"]
     return HealthReport(
         broker_reachable=True,
         account_flat=not open_positions,
