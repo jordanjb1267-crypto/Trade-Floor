@@ -41,6 +41,8 @@ from trading_firm.notify.surface import (  # noqa: E402
 from trading_firm.runner import liveness  # noqa: E402
 from trading_firm.runner.schedule import next_event  # noqa: E402
 from trading_firm.runner.supervisor import (  # noqa: E402
+    PINNED_PROBE_ATTEMPT_BUDGET_SECONDS,
+    PROBE_ATTEMPT_BUDGET_SECONDS,
     BrokerReadContractError,
     HealthReport,
     NonRetryableProbeError,
@@ -111,6 +113,25 @@ ASSUMPTION_MARKER = OPS_STATE / "supervisor-startup-legacy-assumption.json"
 # retry schedule in `_checked_probe` can be budgeted deterministically. Two
 # requests per probe worst case (account discovery + openPositions).
 PROBE_REQUEST_TIMEOUT_SECONDS = 12.0
+
+
+def probe_attempt_budget_seconds() -> float:
+    """Pin-aware attempt budget, from CONFIGURATION STATE only.
+
+    15 s applies only when a VALID explicit pin is configured — one scoped
+    request per attempt, discovery never runs. Absent pin keeps the 25 s
+    two-request budget. An INVALID pin also gets the conservative 25 s: the
+    probe will fail fast and non-retryably anyway, and choosing the smaller
+    budget for a broken configuration would be inference from hope. Never
+    selected from how fast discovery happens to be.
+    """
+    from trading_firm.execution.credentials import CredentialError, configured_account_id
+
+    try:
+        pinned = configured_account_id() is not None
+    except CredentialError:
+        return PROBE_ATTEMPT_BUDGET_SECONDS
+    return PINNED_PROBE_ATTEMPT_BUDGET_SECONDS if pinned else PROBE_ATTEMPT_BUDGET_SECONDS
 
 
 def probe() -> HealthReport:
@@ -345,6 +366,7 @@ def main() -> int:
         sleep=time.sleep,
         heartbeat=announcer,
         sweep=sweep,
+        probe_attempt_budget_seconds=probe_attempt_budget_seconds(),
     )
 
     def _stop(signum, frame):  # noqa: ARG001
