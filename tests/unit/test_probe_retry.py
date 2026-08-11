@@ -21,6 +21,7 @@ import pytest
 from trading_firm.config import BASE_CONFIG_PATH, load_config
 from trading_firm.execution.credentials import CredentialError, practice_token
 from trading_firm.notify.surface import NotificationKind
+from trading_firm.runner.power import SuspensionDetector
 from trading_firm.runner.schedule import next_event
 from trading_firm.runner.supervisor import (
     PROBE_ATTEMPTS,
@@ -71,6 +72,13 @@ class Driver:
             report_dir=tmp_path,
             now=lambda: self.moment,
             sleep=self.slept.append,
+            # §31.5: qualification requires the three runtime controls wired
+            # and an EXECUTED positive power verification — the same contract
+            # the production builder satisfies. Frozen detector clocks: no
+            # drift, so no suspension is ever detected by these tests.
+            heartbeat=lambda phase: None,
+            suspension=SuspensionDetector(wall=lambda: 0.0, monotonic=lambda: 0.0),
+            power_check=lambda: (True, "test: power verified"),
             epoch=DAY - dt.timedelta(days=3),
         )
 
