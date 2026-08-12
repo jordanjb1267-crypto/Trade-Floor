@@ -174,6 +174,16 @@ class SessionRecord:
     # while no code ever checked it. Only `handle()`'s pre-startup gate may set
     # this True, and only from a verifier that actually ran.
     power_verified: bool = False
+    # §31.5 during-session power integrity. LATCHED: once power readiness is
+    # lost mid-session it stays lost for this session, because a later
+    # successful check does not undo the interval in which the machine was
+    # unprotected — the same reasoning §31.2 applies to a late flat
+    # verification and §31.6 to a withdrawn permission. Recovery within the
+    # session never restores qualification.
+    power_lost_in_session: bool = False
+    power_failure_boundary: str | None = None
+    power_failure_at: str | None = None
+    power_failure_reason: str = ""
     attestation_reasons: tuple[str, ...] = ()
 
     def note(
@@ -204,6 +214,7 @@ class SessionRecord:
             suspension_detected=self.suspension_detected,
             health_verified=self.health_verified,
             power_verified=self.power_verified,
+            power_lost_in_session=self.power_lost_in_session,
             unacceptable_outcomes=frozenset(self.unacceptable),
             authority_state=self.authority_state,
             boundaries_processed=len(self.timings),
@@ -405,6 +416,52 @@ class Supervisor:
         except Exception as error:  # noqa: BLE001 — a failing check is a failed check
             return False, f"power check failed: {type(error).__name__} (§31.5)"
         return bool(verified), detail
+
+    def _boundary_power(
+        self, record: SessionRecord, scheduled: ScheduledEvent, at: dt.datetime
+    ) -> tuple[bool, str]:
+        """§31.5 power integrity at ONE scheduled boundary.
+
+        Pre-startup ESTABLISHES readiness (§31.5's fail-closed gate). Every
+        later boundary RE-VERIFIES it, because "AC power disappears during the
+        session" is a transition that no single pre-startup sample can observe
+        — a laptop unplugged at 09:00 looked identical to one on mains all day.
+
+        Only a verified->failed TRANSITION latches the degrade. A machine whose
+        readiness was never provable stays under the §31.4 qualification-only
+        semantics; degrading it would contradict "declaring technically sound
+        execution degraded would be false". The transition is the thing §31.5
+        names, and it is the thing that latches.
+
+        The alert is the existing §19 RISK_HALT — §19 specifies a minimum set
+        and an operational halt is what this is, so no new kind is invented.
+        One alert per failure EVENT: the latch guard means a power failure that
+        persists across three boundaries does not become three messages, while
+        the terminal report still carries the degraded verdict.
+        """
+        ok, detail = self._checked_power()
+        if scheduled.event is SessionEvent.PRE_STARTUP:
+            record.power_verified = ok
+            # The gate has now READ any pending pre-session suspension and its
+            # verdict is about to enter this session's durable record — that
+            # recording is what resolves the condition (§31.5). It must not
+            # taint the following session, whose own gate gets fresh evidence.
+            self._pending_suspension = False
+            return ok, detail
+        if record.power_verified and not ok and not record.power_lost_in_session:
+            record.power_lost_in_session = True
+            record.power_failure_boundary = scheduled.event.value
+            record.power_failure_at = at.isoformat()
+            record.power_failure_reason = detail
+            record.degraded = True
+            self._notify(
+                NotificationKind.RISK_HALT,
+                f"{record.session_date} POWER LOST DURING SESSION at the "
+                f"{scheduled.event.value} boundary ({at.isoformat()}): {detail}. "
+                f"The session is degraded and NON-QUALIFYING, and stays so for "
+                f"the rest of the day even if power returns (§31.5).",
+            )
+        return ok, detail
 
     # ----------------------------------------------------- §31.6 authority
 
@@ -612,6 +669,18 @@ class Supervisor:
         self.advance_authority(scheduled.session_date)
         at = self._now()
 
+        # §31.5 power integrity, sampled at EVERY boundary before that boundary
+        # can be recorded as kept. Flatten is the one exception to the position,
+        # never to the requirement: there the deadline-governed broker
+        # verification runs first, because the §31.2 window is 60 seconds and
+        # inviolate while `pmset` may block for up to its own timeout — a power
+        # probe must never be able to starve the flat-state verification. At
+        # flatten the sample therefore runs after the probe and before the
+        # verdict is computed, so the session still cannot be scored clean
+        # without it.
+        if scheduled.event is not SessionEvent.FLATTEN:
+            power_ok, power_detail = self._boundary_power(record, scheduled, at)
+
         if scheduled.event is SessionEvent.PRE_STARTUP:
             # §31.1: health may not be treated as timely past the checkpoint
             # tolerance, so verification gets exactly that window — its own,
@@ -621,13 +690,6 @@ class Supervisor:
                     seconds=POLICY[SessionEvent.PRE_STARTUP].tolerance_seconds
                 )
             )
-            power_ok, power_detail = self._checked_power()
-            record.power_verified = power_ok
-            # The gate has now READ any pending pre-session suspension and its
-            # verdict is about to enter this session's durable record — that
-            # recording is what resolves the condition (§31.5). It must not
-            # taint the following session, whose own gate gets fresh evidence.
-            self._pending_suspension = False
             power_note = (
                 "power readiness verified" if power_ok
                 else f"power readiness UNVERIFIED: {power_detail}"
@@ -664,6 +726,8 @@ class Supervisor:
             # and a raising sweep is a recorded failure, never a crash —
             # surveillance observes the session and must not be able to end it.
             outcome = "skipped: session degraded" if record.degraded else "boundary kept"
+            if not power_ok:
+                outcome += f"; POWER READINESS FAILED: {power_detail}"
             record.note(scheduled.event, at, outcome, scheduled.at)
             if self._sweep is not None and not record.degraded:
                 try:
@@ -675,7 +739,10 @@ class Supervisor:
                     )
 
         elif scheduled.event is SessionEvent.ENTRY_CUTOFF:
-            record.note(scheduled.event, at, "manage-only from here (§14)", scheduled.at)
+            outcome = "manage-only from here (§14)"
+            if not power_ok:
+                outcome += f"; POWER READINESS FAILED: {power_detail}"
+            record.note(scheduled.event, at, outcome, scheduled.at)
 
         elif scheduled.event is SessionEvent.FLATTEN:
             # Runs on degraded days too: "could not verify flat" must reach the
@@ -717,6 +784,15 @@ class Supervisor:
             # §14 lifecycle: FLATTENING -> RECONCILIATION -> CLOSED, or HALTED
             # when flat state could not be proven (§31.2). Driven on the live
             # latch so the report's terminal state is evidence, not a label.
+            # §31.5, after the §31.2-governed verification and before the
+            # verdict: the final boundary re-verifies power like every other,
+            # it simply may not do so ahead of the inviolate flat-state window.
+            power_ok, power_detail = self._boundary_power(record, scheduled, at)
+            if not power_ok:
+                record.note(
+                    scheduled.event, at,
+                    f"POWER READINESS FAILED: {power_detail}",
+                )
             latch = self.latch_for(scheduled.session_date)
             latch.begin_reconciliation()
             if record.flat_state is FlatState.VERIFIED_FLAT:
@@ -768,6 +844,11 @@ class Supervisor:
             "max_lateness_s": round(verdict.max_lateness_seconds, 3),
             "flat_state": str(verdict.flat_state),
             "suspension_detected": verdict.suspension_detected,
+            "power_verified": record.power_verified,
+            "power_lost_in_session": record.power_lost_in_session,
+            "power_failure_boundary": record.power_failure_boundary,
+            "power_failure_at": record.power_failure_at,
+            "power_failure_reason": record.power_failure_reason,
             "reasons": list(verdict.reasons),
             "events": record.events,
             "environment": "shadow",

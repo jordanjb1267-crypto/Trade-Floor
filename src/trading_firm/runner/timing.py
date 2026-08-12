@@ -249,6 +249,7 @@ def assess_session(
     suspension_detected: bool = False,
     health_verified: bool = True,
     power_verified: bool = True,
+    power_lost_in_session: bool = False,
     unacceptable_outcomes: frozenset[SessionEvent] = frozenset(),
     authority_state: str | None = None,
     boundaries_processed: int = 0,
@@ -314,8 +315,20 @@ def assess_session(
         reasons.append("required health checks not verified")
     if not power_verified:
         reasons.append("power/sleep readiness not verified")
+    if power_lost_in_session:
+        reasons.append("AC/power readiness LOST during the session")
 
     # §31.4: every one of these prohibits "nominal".
+    #
+    # `power_lost_in_session` degrades; `power_verified` alone does not. The two
+    # are deliberately different because they answer different questions. A
+    # machine whose readiness was never provable is the §31.4 named case —
+    # sound execution, unprovable machine — where §31.4 says
+    # "declaring technically sound execution degraded would be false". But
+    # §31.5's during-session clause is about power that DISAPPEARS: "If AC power
+    # disappears during the session the runtime records the power-state failure,
+    # marks the session degraded and non-qualifying". A transition from verified
+    # to failed is therefore both, and only the transition is.
     degraded = bool(
         late
         or failed
@@ -323,6 +336,7 @@ def assess_session(
         or flat_state is not FlatState.VERIFIED_FLAT
         or suspension_detected
         or not health_verified
+        or power_lost_in_session
     )
     # §31.3: qualification is stricter still — power readiness is required for
     # the stability gate even when the session itself was otherwise sound.
@@ -344,7 +358,13 @@ def assess_session(
             )
 
     qualifying = not degraded and power_verified and authority_evidence_ok
-    if degraded:
+    if power_lost_in_session:
+        # Named ahead of the generic degraded reason: a session that lost power
+        # mid-flight must say so, not hide behind "SESSION DEGRADED" — the owner
+        # cannot act on a cause the report withholds (§31.5 "records the
+        # power-state failure").
+        qualification_reason = "POWER LOST DURING SESSION"
+    elif degraded:
         qualification_reason = "SESSION DEGRADED"
     elif not authority_evidence_ok:
         qualification_reason = "AUTHORITY EVIDENCE MISSING"
