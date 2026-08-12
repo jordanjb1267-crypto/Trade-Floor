@@ -30,7 +30,9 @@ observability module is no reason to weaken that.
 
 from __future__ import annotations
 
+import datetime as dt
 import enum
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -134,22 +136,74 @@ def parse_assertions(assertions_output: str) -> tuple[bool, bool]:
     return system, idle
 
 
-def count_recent_sleep_events(log_output: str, *, limit: int = 400) -> int:
-    """Sleep entries in `pmset -g log` output. Caller supplies a pre-filtered
-    window; this counts the transitions that matter."""
+# `pmset -g log` stamps every line with local civil time PLUS its UTC offset
+# (e.g. "2026-08-04 23:50:18 -0500"), so a parsed timestamp is an unambiguous
+# absolute instant — a DST fallback hour cannot produce an ambiguous parse,
+# because the offset distinguishes the two wall-clock occurrences.
+_SLEEP_SIGNATURE = "Entering Sleep state"
+_LOG_TIMESTAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\b")
+
+
+def count_recent_sleep_events(
+    log_output: str,
+    *,
+    now: dt.datetime | None = None,
+    window_seconds: float = RECENT_SLEEP_WINDOW_SECONDS,
+) -> int:
+    """Sleep entries inside the ratified time window, from `pmset -g log`.
+
+    TIME-bounded, deliberately not line-bounded. The previous implementation
+    read only the final 400 lines, which made the safety property depend on
+    log density rather than on time: a sleep event 45 minutes old vanished
+    behind 400 denser lines and power readiness passed — reproduced
+    deterministically during final review. Position in the log is never a
+    substitute for a timestamp comparison, so every line is examined and only
+    the parsed instant decides.
+
+    Fail-closed parsing contract, per §31.5's fails-closed posture:
+
+    - a line carrying the sleep signature whose timestamp parses inside
+      [now - window, now] counts (cutoff INCLUSIVE: a sleep exactly at the
+      boundary is "within this window");
+    - a line carrying the sleep signature whose timestamp is absent, wrapped,
+      or unparseable ALSO counts — a sleep we cannot place in time cannot be
+      proven old, and unprovable readiness is unearned readiness;
+    - a line without the signature is ignored regardless of shape: garbage
+      that is not sleep evidence disqualifies nothing.
+    """
+    if now is None:
+        now = dt.datetime.now(dt.UTC)
+    cutoff = now - dt.timedelta(seconds=window_seconds)
     count = 0
-    for line in log_output.splitlines()[-limit:]:
-        if "Entering Sleep state" in line:
+    for line in log_output.splitlines():
+        if _SLEEP_SIGNATURE not in line:
+            continue
+        match = _LOG_TIMESTAMP.match(line)
+        if match is None:
+            count += 1  # recognized sleep, unplaceable in time: fail closed
+            continue
+        try:
+            instant = dt.datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S %z")
+        except ValueError:
+            count += 1  # matched the shape but not a real instant: fail closed
+            continue
+        if instant >= cutoff:
             count += 1
     return count
 
 
-def read_power_state(*, recent_sleep_lines: str | None = None) -> PowerState:
-    """Probe macOS for everything §31.5 requires. Never raises."""
+def read_power_state(
+    *, recent_sleep_lines: str | None = None, now: dt.datetime | None = None
+) -> PowerState:
+    """Probe macOS for everything §31.5 requires. Never raises.
+
+    `now` is injectable so the recent-sleep window is deterministic under
+    test; production callers omit it and get the real clock.
+    """
     source = parse_power_source(_pmset("-g", "ps"))
     system, idle = parse_assertions(_pmset("-g", "assertions"))
     log_text = recent_sleep_lines if recent_sleep_lines is not None else _pmset("-g", "log")
-    recent = count_recent_sleep_events(log_text)
+    recent = count_recent_sleep_events(log_text, now=now)
     return PowerState(
         source=source,
         prevent_system_sleep=system,

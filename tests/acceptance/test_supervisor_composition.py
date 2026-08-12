@@ -1247,6 +1247,88 @@ class TestMidSessionPowerLoss:
         assert tuesday["qualifying"] is True
         assert staged.calls >= 5
 
+    def test_restart_chain_recent_pmset_sleep_still_fails_readiness(
+        self, clock, tmp_path, monkeypatch
+    ) -> None:
+        """The final-rereview blocking chain, closed end to end: the machine
+        slept 45 minutes before pre-startup and the process RESTARTED, losing
+        the in-memory pending-suspension flag and the detector's history. The
+        pmset recent-sleep backstop is then the only §31.5 guard — and under
+        the old line-bounded parser, 400 denser log lines hid the sleep and
+        the session could QUALIFY. This drives the REAL read_power_state →
+        count_recent_sleep_events path (only `_pmset` is substituted), through
+        the production builder."""
+        pre_startup_at = at(MON, 7, 15)
+        sleep_at = pre_startup_at - dt.timedelta(minutes=45)
+        stamp = f"{sleep_at:%Y-%m-%d %H:%M:%S} {sleep_at:%z}"
+        dense = "\n".join(
+            f"{sleep_at + dt.timedelta(seconds=6 * i):%Y-%m-%d %H:%M:%S} "
+            f"{sleep_at:%z} Assertions  PID 4242 Created ..."
+            for i in range(1, 401)
+        )
+        outputs = {
+            ("-g", "ps"): "Now drawing from 'AC Power'\n -InternalBattery-0 100%",
+            ("-g", "assertions"): (
+                "Assertion status system-wide:\n"
+                "   PreventUserIdleSystemSleep     1\n"
+                "   PreventSystemSleep             1\n"
+            ),
+            ("-g", "log"): (
+                f"{stamp} Sleep  Entering Sleep state due to 'Clamshell Sleep': ...\n"
+                + dense
+            ),
+        }
+        monkeypatch.setattr(power, "_pmset", lambda *args: outputs[args])
+        # Freeze the window clock at the session moment so the 45-minute-old
+        # sleep is genuinely inside the ratified hour when the gate runs.
+        real_read = power.read_power_state
+        composer = Composer(clock, tmp_path, monkeypatch)  # the RESTARTED process
+        monkeypatch.setattr(
+            power, "read_power_state",
+            lambda: real_read(now=composer.moment),
+        )
+        composer.run_events(5)
+        report = composer.report(MON)
+        assert report["power_verified"] is False, (
+            "a sleep 45 minutes before pre-startup, buried under 400 newer "
+            "log lines, must still be seen by the recent-sleep window"
+        )
+        assert report["qualifying"] is False
+        assert report["qualification_reason"] == "POWER READINESS UNVERIFIED"
+        pre = report["events"][0]
+        assert "sleep event(s) in the last hour" in pre["outcome"]
+
+    def test_restart_after_the_window_expires_starts_clean(
+        self, clock, tmp_path, monkeypatch
+    ) -> None:
+        """The mirror case: the sleep is genuinely older than the hour, so a
+        restarted process is NOT haunted by it — no false retained failure."""
+        pre_startup_at = at(MON, 7, 15)
+        sleep_at = pre_startup_at - dt.timedelta(hours=2)
+        outputs = {
+            ("-g", "ps"): "Now drawing from 'AC Power'\n -InternalBattery-0 100%",
+            ("-g", "assertions"): (
+                "Assertion status system-wide:\n"
+                "   PreventUserIdleSystemSleep     1\n"
+                "   PreventSystemSleep             1\n"
+            ),
+            ("-g", "log"): (
+                f"{sleep_at:%Y-%m-%d %H:%M:%S} {sleep_at:%z} Sleep  "
+                f"Entering Sleep state due to 'Clamshell Sleep': ...\n"
+            ),
+        }
+        monkeypatch.setattr(power, "_pmset", lambda *args: outputs[args])
+        real_read = power.read_power_state
+        composer = Composer(clock, tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            power, "read_power_state",
+            lambda: real_read(now=composer.moment),
+        )
+        composer.run_events(5)
+        report = composer.report(MON)
+        assert report["power_verified"] is True
+        assert report["qualifying"] is True
+
     def test_a_restart_cannot_convert_a_completed_failure_into_a_pass(
         self, clock, tmp_path, monkeypatch
     ) -> None:
