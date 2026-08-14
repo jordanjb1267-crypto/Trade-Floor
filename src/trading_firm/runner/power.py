@@ -64,30 +64,49 @@ class PowerState:
     prevent_system_sleep: bool
     prevent_idle_sleep: bool
     recent_sleep_events: int
+    # §31.5 channel state: did the sleep-history query itself SUCCEED? A
+    # count of zero is meaningful only when something was actually counted.
+    # Defaults False — a PowerState that never positively claims a verified
+    # history cannot pass, which is the direction every §31 default in this
+    # branch now points.
+    sleep_history_verified: bool = False
     detail: str = ""
 
     @property
     def ready(self) -> bool:
         """Every machine-observable requirement, all of which must hold.
 
-        Lid state is deliberately absent: macOS does not reliably expose it, so
-        claiming to check it would be a lie told by a health gate.
+        `sleep_history_verified` guards the recent-sleep count: zero events
+        from a query that never ran is not zero events, it is no evidence
+        (§31.5 "fails closed for stability qualification"). Lid state is
+        deliberately absent: macOS does not reliably expose it, so claiming
+        to check it would be a lie told by a health gate.
         """
         return (
             self.source is PowerSource.AC
             and self.prevent_system_sleep
             and self.prevent_idle_sleep
+            and self.sleep_history_verified
             and self.recent_sleep_events == 0
         )
 
     def reasons(self) -> tuple[str, ...]:
         problems: list[str] = []
-        if self.source is not PowerSource.AC:
-            problems.append(f"not on AC power ({self.source})")
+        if self.source is PowerSource.BATTERY:
+            problems.append("not on AC power (battery)")
+        elif self.source is not PowerSource.AC:
+            # UNKNOWN covers both "command failed" and "output unparseable":
+            # either way AC was not ESTABLISHED, which is different from
+            # established-absent and must read differently to the operator.
+            problems.append("power source could not be verified (pmset unavailable or unreadable)")
         if not self.prevent_system_sleep:
             problems.append("PreventSystemSleep assertion absent (caffeinate -s)")
         if not self.prevent_idle_sleep:
             problems.append("PreventUserIdleSystemSleep assertion absent (caffeinate -i)")
+        if not self.sleep_history_verified:
+            problems.append(
+                "sleep history could not be verified (pmset -g log failed or unreadable)"
+            )
         if self.recent_sleep_events:
             problems.append(
                 f"{self.recent_sleep_events} sleep event(s) in the last hour — the "
@@ -96,16 +115,27 @@ class PowerState:
         return tuple(problems)
 
 
-def _pmset(*args: str) -> str:
-    """Run pmset read-only. Any failure yields empty output, never an exception:
-    a health probe that crashes the supervisor inverts its own purpose."""
+def _pmset(*args: str) -> str | None:
+    """Run pmset read-only. Never raises: a health probe that crashes the
+    supervisor inverts its own purpose.
+
+    Returns stdout on success — possibly empty, which is a valid answer —
+    and None when the command could not answer: timeout, non-zero exit,
+    missing executable, permission or decode failure. The two must never
+    share a representation. '' means "queried, and there was nothing";
+    None means "nothing was queried". Collapsing failure to '' was the
+    sentinel bug of the final rereview: a dead `pmset -g log` read as a
+    quiet sleep history, and readiness passed on evidence that was never
+    obtained.
+    """
     try:
         result = subprocess.run(
             ["pmset", *args], capture_output=True, text=True, timeout=20
         )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout if result.returncode == 0 else ""
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # ValueError covers decode failures: an unreadable answer is no answer.
+        return None
+    return result.stdout if result.returncode == 0 else None
 
 
 def parse_power_source(ps_output: str) -> PowerSource:
@@ -192,23 +222,49 @@ def count_recent_sleep_events(
     return count
 
 
+def _log_establishes_history(log_text: str) -> bool:
+    """Can this SUCCESSFUL query output actually answer the sleep question?
+
+    Empty output is a valid answer: the command ran and there were no events.
+    Non-empty output must carry at least one parseable pmset timestamp
+    anywhere — a real `pmset -g log` stamps every entry, so output with no
+    stamp at all is not a log we can read history from (truncated, garbled,
+    or not pmset), and an unreadable history is an unverified one.
+    """
+    if log_text.strip() == "":
+        return True
+    return any(_LOG_TIMESTAMP.match(line) for line in log_text.splitlines())
+
+
 def read_power_state(
     *, recent_sleep_lines: str | None = None, now: dt.datetime | None = None
 ) -> PowerState:
-    """Probe macOS for everything §31.5 requires. Never raises.
+    """Probe macOS for everything §31.5 requires.
 
-    `now` is injectable so the recent-sleep window is deterministic under
-    test; production callers omit it and get the real clock.
+    Never raises on the production path — the no-argument call. The two
+    injection parameters are test seams with their own contracts: an
+    injected naive `now` violates the aware-instant comparison and may
+    raise, which is itself the fail-closed outcome for a corrupt clock.
+
+    Each pmset channel keeps its failure distinct from its empty answer:
+    a failed `ps` yields UNKNOWN (not AC), failed `assertions` yields
+    absent-assertions, and a failed or unusable `log` yields
+    sleep_history_verified=False — never a quiet count of zero. `now` is
+    injectable so the recent-sleep window is deterministic under test.
     """
-    source = parse_power_source(_pmset("-g", "ps"))
-    system, idle = parse_assertions(_pmset("-g", "assertions"))
+    source = parse_power_source(_pmset("-g", "ps") or "")
+    system, idle = parse_assertions(_pmset("-g", "assertions") or "")
     log_text = recent_sleep_lines if recent_sleep_lines is not None else _pmset("-g", "log")
-    recent = count_recent_sleep_events(log_text, now=now)
+    if log_text is None or not _log_establishes_history(log_text):
+        sleep_verified, recent = False, 0
+    else:
+        sleep_verified, recent = True, count_recent_sleep_events(log_text, now=now)
     return PowerState(
         source=source,
         prevent_system_sleep=system,
         prevent_idle_sleep=idle,
         recent_sleep_events=recent,
+        sleep_history_verified=sleep_verified,
         detail="pmset",
     )
 

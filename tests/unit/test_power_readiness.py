@@ -12,7 +12,9 @@ suspension detector takes injected clocks, so nothing here sleeps or shells out.
 from __future__ import annotations
 
 import datetime as dt
+import subprocess
 
+from trading_firm.runner import power as power_module
 from trading_firm.runner.power import (
     RECENT_SLEEP_WINDOW_SECONDS,
     SUSPENSION_THRESHOLD_SECONDS,
@@ -206,6 +208,148 @@ class TestRecentSleepTimeWindow:
         assert old.recent_sleep_events == 0
 
 
+class _Completed:
+    """The two fields of subprocess.run's result that _pmset reads."""
+
+    def __init__(self, stdout: str = "", returncode: int = 0):
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+LOG_QUIET = "2026-08-12 06:05:00 -0500 Wake  DarkWake from Deep Idle [CDNPB] ...\n"
+
+
+class TestChannelVerification:
+    """Command failure is never an empty answer (final-rereview blocker).
+
+    The defeated defect: `_pmset` collapsed timeout, non-zero exit, and
+    OSError to "" — and for `pmset -g log` alone, "" is a PASSING value
+    (zero recent sleeps). "Unable to establish sleep history" was
+    observationally identical to "history queried, no recent sleep", so a
+    dead log command let readiness pass on evidence never obtained. These
+    drive the REAL subprocess wrapper with subprocess.run substituted at
+    the command boundary — the only seam a channel-failure test may use.
+    """
+
+    def probe(self, monkeypatch, *, ps=None, assertions=None, log=None) -> PowerState:
+        behaviors = {
+            ("-g", "ps"): ps if ps is not None else _Completed(PS_AC),
+            ("-g", "assertions"):
+                assertions if assertions is not None else _Completed(ASSERTIONS_BOTH),
+            ("-g", "log"): log if log is not None else _Completed(LOG_QUIET),
+        }
+
+        def fake_run(cmd, **kwargs):
+            behavior = behaviors[tuple(cmd[1:])]
+            if isinstance(behavior, BaseException):
+                raise behavior
+            return behavior
+
+        monkeypatch.setattr(power_module.subprocess, "run", fake_run)
+        return read_power_state(now=NOW)
+
+    # ------------------------------------------------------------- log channel
+
+    def test_log_success_with_empty_output_is_verified(self, monkeypatch) -> None:
+        """Case A: the command RAN and answered 'nothing'. That is evidence."""
+        state = self.probe(monkeypatch, log=_Completed(""))
+        assert state.sleep_history_verified is True
+        assert state.recent_sleep_events == 0
+        assert state.ready is True
+
+    def test_log_success_with_quiet_output_is_verified(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch)
+        assert state.sleep_history_verified is True
+        assert state.recent_sleep_events == 0
+        assert state.ready is True
+
+    def test_log_success_with_recent_sleep_fails_readiness(self, monkeypatch) -> None:
+        recent = sleep_line(NOW - dt.timedelta(minutes=30))
+        state = self.probe(monkeypatch, log=_Completed(LOG_QUIET + recent + "\n"))
+        assert state.sleep_history_verified is True
+        assert state.recent_sleep_events == 1
+        assert state.ready is False
+
+    def test_log_timeout_is_unverified_not_quiet(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch, log=subprocess.TimeoutExpired("pmset", 20))
+        assert state.sleep_history_verified is False
+        assert state.ready is False
+        assert any("sleep history could not be verified" in r for r in state.reasons())
+
+    def test_log_nonzero_exit_is_unverified(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch, log=_Completed("some error text", returncode=1))
+        assert state.sleep_history_verified is False
+        assert state.ready is False
+
+    def test_log_missing_command_is_unverified(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch, log=FileNotFoundError("pmset"))
+        assert state.sleep_history_verified is False
+        assert state.ready is False
+
+    def test_log_permission_error_is_unverified(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch, log=PermissionError("pmset"))
+        assert state.sleep_history_verified is False
+        assert state.ready is False
+
+    def test_log_unusable_output_is_unverified(self, monkeypatch) -> None:
+        """Non-empty output with no pmset timestamp anywhere is not a log we
+        can read history from — success at the process level is not success
+        at the evidence level."""
+        state = self.probe(monkeypatch, log=_Completed("utter garbage\nno stamps here\n"))
+        assert state.sleep_history_verified is False
+        assert state.ready is False
+
+    def test_recognized_sleep_with_malformed_stamp_fails_through_the_wrapper(
+        self, monkeypatch
+    ) -> None:
+        """The per-line rule survives the channel change: a usable log whose
+        SLEEP line cannot be placed in time still counts it (fail closed)."""
+        log = LOG_QUIET + "not-a-stamp Sleep  Entering Sleep state due to 'x'\n"
+        state = self.probe(monkeypatch, log=_Completed(log))
+        assert state.sleep_history_verified is True
+        assert state.recent_sleep_events == 1
+        assert state.ready is False
+
+    # ------------------------------------------------------ ps / assertions
+
+    def test_ps_failure_blocks_readiness_as_unverified(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch, ps=subprocess.TimeoutExpired("pmset", 20))
+        assert state.source is PowerSource.UNKNOWN
+        assert state.ready is False
+        assert any("could not be verified" in r for r in state.reasons())
+
+    def test_ps_success_verifies_ac(self, monkeypatch) -> None:
+        assert self.probe(monkeypatch).source is PowerSource.AC
+
+    def test_assertions_failure_blocks_readiness(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch, assertions=FileNotFoundError("pmset"))
+        assert state.prevent_system_sleep is False
+        assert state.prevent_idle_sleep is False
+        assert state.ready is False
+
+    def test_assertions_success_verifies_both(self, monkeypatch) -> None:
+        state = self.probe(monkeypatch)
+        assert state.prevent_system_sleep is True
+        assert state.prevent_idle_sleep is True
+
+    # ------------------------------------------------------------- combined
+
+    def test_selective_log_failure_cannot_pass(self, monkeypatch) -> None:
+        """THE decisive regression: both other channels healthy, log dead.
+        This exact state passed readiness before this fix."""
+        state = self.probe(monkeypatch, log=subprocess.TimeoutExpired("pmset", 20))
+        assert state.source is PowerSource.AC
+        assert state.prevent_system_sleep and state.prevent_idle_sleep
+        assert state.ready is False
+
+    def test_successful_empty_log_remains_distinguishable_and_may_pass(
+        self, monkeypatch
+    ) -> None:
+        """The mirror: empty SUCCESS still passes, proving failure and empty
+        no longer share a representation."""
+        assert self.probe(monkeypatch, log=_Completed("")).ready is True
+
+
 class TestReadiness:
     def _state(self, **kw) -> PowerState:
         base = dict(
@@ -213,6 +357,7 @@ class TestReadiness:
             prevent_system_sleep=True,
             prevent_idle_sleep=True,
             recent_sleep_events=0,
+            sleep_history_verified=True,
         )
         base.update(kw)
         return PowerState(**base)

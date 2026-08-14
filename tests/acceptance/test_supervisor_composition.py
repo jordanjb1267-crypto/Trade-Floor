@@ -118,6 +118,7 @@ def ready_state() -> PowerState:
         prevent_system_sleep=True,
         prevent_idle_sleep=True,
         recent_sleep_events=0,
+        sleep_history_verified=True,
     )
 
 
@@ -127,6 +128,7 @@ def battery_state() -> PowerState:
         prevent_system_sleep=True,
         prevent_idle_sleep=True,
         recent_sleep_events=0,
+        sleep_history_verified=True,
     )
 
 
@@ -919,6 +921,7 @@ class TestPowerGateWiring:
             prevent_system_sleep=True,
             prevent_idle_sleep=True,
             recent_sleep_events=0,
+            sleep_history_verified=True,
         )
         monkeypatch.setattr(power, "read_power_state", lambda: unknown)
         composer = Composer(clock, tmp_path, monkeypatch)
@@ -1056,6 +1059,7 @@ def assertions_dropped() -> PowerState:
         prevent_system_sleep=False,
         prevent_idle_sleep=False,
         recent_sleep_events=0,
+        sleep_history_verified=True,
     )
 
 
@@ -1328,6 +1332,76 @@ class TestMidSessionPowerLoss:
         report = composer.report(MON)
         assert report["power_verified"] is True
         assert report["qualifying"] is True
+
+    def test_restart_chain_with_a_dead_log_command_cannot_qualify(
+        self, clock, tmp_path, monkeypatch
+    ) -> None:
+        """The final-rereview blocking chain: a restart loses the in-memory
+        pending-suspension flag and the detector's history, leaving the pmset
+        recent-sleep window as the only §31.5 backstop — and then the log
+        COMMAND fails. Before this fix, failure collapsed to "" (a quiet
+        history) and the session could QUALIFY. Now a dead sleep-history
+        channel is unverified readiness: the runtime must never conclude
+        'no log, therefore no sleep'."""
+        outputs = {
+            ("-g", "ps"): "Now drawing from 'AC Power'\n -InternalBattery-0 100%",
+            ("-g", "assertions"): (
+                "Assertion status system-wide:\n"
+                "   PreventUserIdleSystemSleep     1\n"
+                "   PreventSystemSleep             1\n"
+            ),
+            ("-g", "log"): None,  # timeout / non-zero / missing: no answer
+        }
+        monkeypatch.setattr(power, "_pmset", lambda *args: outputs[args])
+        composer = Composer(clock, tmp_path, monkeypatch)  # the RESTARTED process
+        composer.run_events(5)
+        report = composer.report(MON)
+        assert report["power_verified"] is False
+        assert report["qualifying"] is False
+        assert report["qualification_reason"] == "POWER READINESS UNVERIFIED"
+        pre = report["events"][0]
+        assert "sleep history could not be verified" in pre["outcome"]
+
+    def test_mid_session_log_channel_failure_latches_and_alerts(
+        self, clock, tmp_path, monkeypatch
+    ) -> None:
+        """§31.5 at a later boundary: pre-startup verifies all three channels,
+        then `pmset -g log` dies at briefing and RECOVERS by activation. The
+        latch must fire on the unverified re-check, the owner must hear it
+        once, and the recovery must not restore qualification — a persistent
+        or transient log outage can no longer preserve power_verified=True
+        through the session."""
+        pre_startup_at = at(MON, 7, 15)
+        quiet = f"{pre_startup_at:%Y-%m-%d %H:%M:%S} {pre_startup_at:%z} Wake  DarkWake ...\n"
+        composer_ref = {}
+
+        def staged_pmset(*args):
+            if args == ("-g", "ps"):
+                return "Now drawing from 'AC Power'\n -InternalBattery-0 100%"
+            if args == ("-g", "assertions"):
+                return (
+                    "Assertion status system-wide:\n"
+                    "   PreventUserIdleSystemSleep     1\n"
+                    "   PreventSystemSleep             1\n"
+                )
+            moment = composer_ref["c"].moment
+            failing = at(MON, 7, 30) <= moment < at(MON, 8, 30)
+            return None if failing else quiet
+
+        monkeypatch.setattr(power, "_pmset", staged_pmset)
+        composer = Composer(clock, tmp_path, monkeypatch)
+        composer_ref["c"] = composer
+        composer.run_events(5)
+        report = composer.report(MON)
+        assert report["power_verified"] is True, "pre-startup itself verified"
+        assert report["power_lost_in_session"] is True, "the unverified re-check latches"
+        assert report["power_failure_boundary"] == "briefing"
+        assert "sleep history could not be verified" in report["power_failure_reason"]
+        assert report["degraded"] is True
+        assert report["qualifying"] is False
+        assert report["qualification_reason"] == "POWER LOST DURING SESSION"
+        power_alerts = [b for _, b in composer.sent if "POWER LOST DURING SESSION" in b]
+        assert len(power_alerts) == 1, "one alert per failure event, no storm"
 
     def test_a_restart_cannot_convert_a_completed_failure_into_a_pass(
         self, clock, tmp_path, monkeypatch
