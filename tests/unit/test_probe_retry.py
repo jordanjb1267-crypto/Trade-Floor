@@ -519,11 +519,21 @@ class TestFalsePassContract:
         assert len(retry_sleeps) == PROBE_ATTEMPTS - 1
 
     def test_2026_08_10_authoritative_result_unchanged(self) -> None:
-        """Requirement 29: the incident session stays exactly as recorded."""
+        """Requirement 29: the incident session stays exactly as recorded.
+
+        Reads the CANONICAL committed evidence, not the gitignored production
+        artifact — the original version did the latter, so this required
+        invariant passed only on the production machine and left the
+        repository's deterministic CI red from the day it landed. The
+        canonical fixture's provenance, secret-freedom, and exact equivalence
+        to the production artifact (where that artifact exists) are proven in
+        tests/unit/test_historical_authority.py; this assertion keeps the
+        incident's contract anchored beside the incident's other regressions.
+        """
         from pathlib import Path
 
         report = json.loads(
-            Path("reports/ops/2026-08-10-session.json").read_text()
+            Path("tests/fixtures/2026-08-10-session.authoritative.json").read_text()
         )
         assert report["session_health"] == "DEGRADED"
         assert report["qualification"] == "NON_QUALIFYING"

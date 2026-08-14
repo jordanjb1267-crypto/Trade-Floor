@@ -1,0 +1,7 @@
+{
+  "source": "reports/ops/2026-08-10-session.json",
+  "source_sha256": "229517d0f86379036ca3a951e25e3b07d5259e71bfa2fec54e5d47fcd29bd831",
+  "derivation": "derive_canonical() in tests/unit/test_historical_authority.py: trading_firm.notify.surface.redact() over every event outcome, then the OANDA practice account identifier digits replaced with <redacted-account>; every other field byte-faithful to the source",
+  "fixture_sha256": "74433d07a9906c398fe6d8a69436e2a2ffb39b9878d74196c4d09081d899eb7f",
+  "generated_at": "2026-08-14T03:42:51+00:00"
+}
