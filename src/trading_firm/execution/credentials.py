@@ -71,15 +71,43 @@ def practice_token() -> str:
     return validate_credential(TOKEN_VAR, os.environ.get(TOKEN_VAR))
 
 
-def configured_account_id() -> str | None:
-    """The operator-pinned practice account, or None to use the first account
-    on the token — the contract both scripts already document.
+# Structural plausibility for an OANDA v20 account id, per the identifiers
+# this repository has actually handled (e.g. 101-001-XXXXXXXX-001): three
+# digit groups and a numeric account body, dash-separated, safe charset.
+# Deliberately NOT a practice-vs-live rule — no authoritative documentation
+# establishes that an id prefix proves environment, so the practice boundary
+# remains the hard-coded host, the practice credential, and the broker's own
+# authorization (§13, §17).
+_ACCOUNT_ID_SHAPE = re.compile(r"^\d{3}-\d{3}-\d+-\d{3}$")
 
-    Validated on the same terms as the token: an unset variable is a normal
-    "not pinned", but a placeholder is a misconfiguration and must not reach a
-    request path as `/v3/accounts/<id>/summary`.
+
+def configured_account_id() -> str | None:
+    """The operator-pinned practice account, or None when genuinely unpinned.
+
+    The pin contract (owner-ratified, account-pinning review 2026-08-11):
+
+    - ABSENT: return None — the caller may fall back to account discovery.
+    - PRESENT and valid: return the id. The caller binds to it exclusively.
+    - PRESENT but empty/whitespace: FAIL CLOSED. An operator who attempted to
+      configure an explicit pin must never be silently returned to implicit
+      first-account selection — an empty pin is a broken pin, not no pin.
+    - PRESENT but placeholder/malformed: FAIL CLOSED immediately, no retry,
+      no discovery fallback.
     """
     raw = os.environ.get(ACCOUNT_VAR)
-    if raw is None or not raw.strip():
+    if raw is None:
         return None
-    return validate_credential(ACCOUNT_VAR, raw)
+    if not raw.strip():
+        raise CredentialError(
+            f"{ACCOUNT_VAR} is present but EMPTY. An attempted pin never falls "
+            f"back to account discovery — set the practice account id or remove "
+            f"the variable entirely (§17)."
+        )
+    value = validate_credential(ACCOUNT_VAR, raw)
+    if not _ACCOUNT_ID_SHAPE.match(value):
+        raise CredentialError(
+            f"{ACCOUNT_VAR} is not shaped like an OANDA v20 account id "
+            f"(NNN-NNN-NNNNNNNN-NNN). A malformed pin fails closed rather than "
+            f"reaching a request path or falling back to discovery (§17)."
+        )
+    return value

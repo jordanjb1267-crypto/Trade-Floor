@@ -46,6 +46,12 @@ from trading_firm.execution.credentials import (  # noqa: E402
 )
 
 REQUIRED_VARS = ("OANDA_DEMO_API_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+# Optional, validated-when-present (account-pinning review, 2026-08-11). An
+# operator who writes this variable gets full validation: empty, placeholder,
+# whitespace-corrupted, and malformed values all FAIL — an attempted pin is
+# never silently equivalent to no pin. The known-variable contract stays
+# strict: anything outside REQUIRED + OPTIONAL is still rejected.
+OPTIONAL_VARS = ("OANDA_DEMO_ACCOUNT_ID",)
 REQUIRED_MODE = 0o600
 
 # Shapes. The two Telegram patterns mirror `trading_firm.notify.telegram`;
@@ -55,6 +61,11 @@ FORMATS = {
     "OANDA_DEMO_API_TOKEN": re.compile(r"^[0-9a-f]{32}-[0-9a-f]{32}$"),
     "TELEGRAM_BOT_TOKEN": re.compile(r"^\d{6,12}:[A-Za-z0-9_-]{30,}$"),
     "TELEGRAM_CHAT_ID": re.compile(r"^(-?\d+|@[A-Za-z][A-Za-z0-9_]{4,})$"),
+    # Structural plausibility only, mirroring execution/credentials.py. This is
+    # NOT a practice-vs-live rule: no authoritative documentation lets an id
+    # prefix prove environment locally, so the practice boundary remains the
+    # hard-coded host + practice token + broker authorization (§13).
+    "OANDA_DEMO_ACCOUNT_ID": re.compile(r"^\d{3}-\d{3}-\d+-\d{3}$"),
 }
 
 
@@ -207,7 +218,7 @@ def run_checks(
     checks.append(Check("no duplicate assignments", not duplicates, "; ".join(duplicates)))
 
     missing = [name for name in REQUIRED_VARS if name not in values]
-    extras = sorted(set(values) - set(REQUIRED_VARS))
+    extras = sorted(set(values) - set(REQUIRED_VARS) - set(OPTIONAL_VARS))
     problems = []
     if missing:
         problems.append(f"missing {', '.join(missing)}")
@@ -222,6 +233,11 @@ def run_checks(
             checks.append(check_value(name, values[name]))
         else:
             checks.append(Check(f"format: {name}", False, "variable absent"))
+    for name in OPTIONAL_VARS:
+        if name in values:
+            # Present means the operator attempted a pin: full validation, and
+            # empty/placeholder/malformed all fail — never "same as absent".
+            checks.append(check_value(name, values[name]))
 
     checks.append(check_git_ignored(env_path, repo_root))
     checks.append(check_untracked(env_path, repo_root))
