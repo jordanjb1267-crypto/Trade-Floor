@@ -60,11 +60,28 @@ _ORDER_STATE_MAP = {
 }
 
 
+# Constructor default for `account_id`, distinct from None on purpose. The
+# three account-selection states are incompatible and must not share a value:
+#   omitted (this sentinel) -> resolve from configuration, the legacy contract
+#                              for standalone callers that own their own reads;
+#   explicit None           -> RESOLVED-ABSENT: the caller already resolved the
+#                              configuration and it said "unpinned" — use
+#                              discovery, and NEVER re-read the environment,
+#                              because the caller's composition is the single
+#                              authoritative read (account-pin immutability);
+#   explicit "101-..."      -> the bound account, used verbatim.
+# An Optional[str] whose None meant both "no value supplied" and "resolved
+# absent" was exactly the ambiguity that let a composed process follow a later
+# environment mutation to a different account.
+RESOLVE_FROM_CONFIG = object()
+
+
 class OandaPracticeTransport:
     is_practice = True
 
     def __init__(
-        self, account_id: str | None = None, timeout_seconds: float = 30.0
+        self, account_id: str | None | object = RESOLVE_FROM_CONFIG,
+        timeout_seconds: float = 30.0,
     ):
         # timeout_seconds bounds EACH request. The default preserves every
         # existing caller; the supervisor's verification probe passes a
@@ -76,11 +93,13 @@ class OandaPracticeTransport:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        # Explicit argument wins, then the OANDA_DEMO_ACCOUNT_ID pin both
-        # scripts document, then the first account on the token. Honoring the
-        # pin matters on a token holding several practice accounts, where
-        # "first" is whichever one OANDA happens to list first.
-        self._account_id = account_id or configured_account_id() or self._first_account_id()
+        # Selection per the tri-state above: an omitted argument keeps the
+        # documented pin-then-first-account contract for standalone callers; a
+        # caller that RESOLVED the configuration passes its result explicitly,
+        # and this constructor honors it without a second environment read.
+        if account_id is RESOLVE_FROM_CONFIG:
+            account_id = configured_account_id()
+        self._account_id = account_id or self._first_account_id()
 
     def _request(self, method: str, path: str, body: dict | None = None) -> dict:
         request = urllib.request.Request(

@@ -479,11 +479,14 @@ class TestCompositionWiringManifest:
     def test_the_builder_derives_the_budget_from_the_pin_state(
         self, clock, tmp_path, monkeypatch
     ) -> None:
-        """Account-pin v2: the §31.2 attempt budget arrives from configuration
-        state through the real builder — 15 s only for a VALID explicit pin
-        (one scoped request per attempt), 25 s for genuinely-unpinned, and the
-        conservative 25 s for a broken pin, whose probe then fails closed
-        non-retryably at the transport (proven in test_account_pin.py)."""
+        """Account-pin v2: the §31.2 attempt budget arrives from the SINGLE
+        composition-time binding through the real builder — 15 s only for a
+        VALID explicit pin (one scoped request per attempt), 25 s for
+        genuinely-unpinned, and an invalid-present pin refuses composition
+        entirely: a Supervisor is never constructed with a fallback account
+        mode (immutability remediation)."""
+        from trading_firm.execution.credentials import CredentialError
+
         monkeypatch.delenv("OANDA_DEMO_ACCOUNT_ID", raising=False)
         unpinned = Composer(clock, tmp_path / "unpinned", monkeypatch)
         assert unpinned.supervisor._probe_attempt_budget == 25.0
@@ -493,11 +496,49 @@ class TestCompositionWiringManifest:
         assert pinned.supervisor._probe_attempt_budget == 15.0
 
         monkeypatch.setenv("OANDA_DEMO_ACCOUNT_ID", "not-an-account-id")
-        broken = Composer(clock, tmp_path / "broken", monkeypatch)
-        assert broken.supervisor._probe_attempt_budget == 25.0, (
-            "an invalid pin gets the conservative budget — the smaller pinned "
-            "budget for a broken configuration would be inference from hope"
+        with pytest.raises(CredentialError):
+            Composer(clock, tmp_path / "broken", monkeypatch)
+
+    def test_account_binding_is_resolved_once_and_threaded_everywhere(self) -> None:
+        """The immutability contract, pinned statically: build_supervisor()
+        performs EXACTLY ONE configured_account_id() read, and both consumers
+        — the probe closure and the budget — take that same `bound_account`.
+        Two independent reads at different times was the defect that let an
+        environment mutation split the account from its admission budget."""
+        builder = _function(_script_tree(), "build_supervisor")
+        reads = [
+            node for node in ast.walk(builder)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "configured_account_id"
+        ]
+        assert len(reads) == 1, (
+            f"build_supervisor must read the account configuration exactly "
+            f"once; found {len(reads)} reads"
         )
+
+        call = _supervisor_calls(builder)[0]
+        wired = {kw.arg: kw.value for kw in call.keywords}
+
+        budget = wired["probe_attempt_budget_seconds"]
+        assert (
+            isinstance(budget, ast.Call)
+            and [a.id for a in budget.args if isinstance(a, ast.Name)] == ["bound_account"]
+        ), "the budget must be derived from the captured bound_account"
+
+        probe_value = wired["probe"]
+        assert isinstance(probe_value, ast.IfExp), "probe wiring shape changed"
+        bound_lambda = probe_value.orelse
+        assert isinstance(bound_lambda, ast.Lambda), (
+            "the production probe must be a closure over the captured binding"
+        )
+        inner = bound_lambda.body
+        assert (
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Name)
+            and inner.func.id == "probe"
+            and [a.id for a in inner.args if isinstance(a, ast.Name)] == ["bound_account"]
+        ), "the production probe closure must pass the captured bound_account"
 
     def test_the_script_never_nulls_a_control_after_construction(self) -> None:
         """M-D. The AST cannot prove the absence of post-construction mutation

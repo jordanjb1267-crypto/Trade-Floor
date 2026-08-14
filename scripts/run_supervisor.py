@@ -136,23 +136,28 @@ ASSUMPTION_MARKER = OPS_STATE / "supervisor-startup-legacy-assumption.json"
 PROBE_REQUEST_TIMEOUT_SECONDS = 12.0
 
 
-def probe_attempt_budget_seconds() -> float:
-    """Pin-aware attempt budget, from CONFIGURATION STATE only.
+# probe()'s default for `bound_account`, distinct from None on purpose:
+# omitted means "standalone caller, resolve the pin yourself" (the legacy
+# contract kept for direct invocations and tests), while an explicit value —
+# INCLUDING None — is a binding already resolved by the composition, used
+# verbatim for the life of the process. None here means RESOLVED-ABSENT:
+# discovery mode, chosen once, never re-read from a mutable environment.
+_UNBOUND = object()
 
-    15 s applies only when a VALID explicit pin is configured — one scoped
-    request per attempt, discovery never runs. Absent pin keeps the 25 s
-    two-request budget. An INVALID pin also gets the conservative 25 s: the
-    probe will fail fast and non-retryably anyway, and choosing the smaller
-    budget for a broken configuration would be inference from hope. Never
-    selected from how fast discovery happens to be.
-    """
-    from trading_firm.execution.credentials import CredentialError, configured_account_id
 
-    try:
-        pinned = configured_account_id() is not None
-    except CredentialError:
-        return PROBE_ATTEMPT_BUDGET_SECONDS
-    return PINNED_PROBE_ATTEMPT_BUDGET_SECONDS if pinned else PROBE_ATTEMPT_BUDGET_SECONDS
+def probe_attempt_budget_seconds(bound_account: str | None) -> float:
+    """Pin-aware attempt budget — a PURE function of the captured binding.
+
+    15 s applies only to a bound account: one scoped request per attempt,
+    discovery never runs. A resolved-absent binding keeps the 25 s
+    two-request budget. Deliberately takes the binding as an argument rather
+    than reading configuration itself: the budget and the account the probe
+    will actually use must derive from the SAME single composition-time
+    read, or an environment mutation could split them (final V2 review,
+    account/budget coherence)."""
+    if bound_account is not None:
+        return PINNED_PROBE_ATTEMPT_BUDGET_SECONDS
+    return PROBE_ATTEMPT_BUDGET_SECONDS
 
 
 def power_readiness_check() -> tuple[bool, str]:
@@ -195,11 +200,23 @@ def build_supervisor(
     passed by the composition, and nothing failed. The wiring-manifest
     acceptance test now pins every contracted keyword below.
     """
+    from trading_firm.execution.credentials import configured_account_id
     from trading_firm.runner.power import SuspensionDetector
+
+    # THE single configuration read for account selection. Everything the
+    # composed Supervisor later does with an account — which URL the probe
+    # requests AND which §31.2 attempt budget admits it — derives from this
+    # one captured value, so the two can never disagree and a later
+    # environment mutation changes nothing until recomposition (the ratified
+    # immutable-process-binding contract, which the reviewed 51c289a
+    # implementation stated but never actually enforced). An invalid-present
+    # pin raises here and composition fails closed: a Supervisor is never
+    # constructed with a fallback account mode.
+    bound_account = configured_account_id()
 
     return Supervisor(
         clock=clock,
-        probe=probe_fn if probe_fn is not None else probe,
+        probe=probe_fn if probe_fn is not None else (lambda: probe(bound_account)),
         notify=notify_fn,
         report_dir=report_dir if report_dir is not None else REPO / "reports" / "ops",
         now=now if now is not None else (lambda: dt.datetime.now(dt.UTC)),
@@ -209,11 +226,11 @@ def build_supervisor(
         epoch=operational_epoch(),
         suspension=SuspensionDetector(),
         power_check=power_readiness_check,
-        probe_attempt_budget_seconds=probe_attempt_budget_seconds(),
+        probe_attempt_budget_seconds=probe_attempt_budget_seconds(bound_account),
     )
 
 
-def probe() -> HealthReport:
+def probe(bound_account: str | None | object = _UNBOUND) -> HealthReport:
     """Read-only practice-account check: reachable, and flat?
 
     Imported lazily so the supervisor module itself never links the execution
@@ -236,9 +253,21 @@ def probe() -> HealthReport:
     from trading_firm.execution.oanda_transport import OandaPracticeTransport
 
     try:
-        transport = OandaPracticeTransport(
-            timeout_seconds=PROBE_REQUEST_TIMEOUT_SECONDS
-        )
+        if bound_account is _UNBOUND:
+            # Standalone invocation: no composition resolved a binding, so the
+            # transport applies its own documented pin-then-first contract.
+            transport = OandaPracticeTransport(
+                timeout_seconds=PROBE_REQUEST_TIMEOUT_SECONDS
+            )
+        else:
+            # Composed invocation: the binding — including a resolved-absent
+            # None, which means discovery — was captured once at
+            # build_supervisor() and is used verbatim. The environment is
+            # never consulted again for account selection in this process.
+            transport = OandaPracticeTransport(
+                account_id=bound_account,
+                timeout_seconds=PROBE_REQUEST_TIMEOUT_SECONDS,
+            )
     except CredentialError as error:
         raise NonRetryableProbeError(str(error)) from error
     response = transport._request(
