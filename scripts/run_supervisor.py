@@ -61,6 +61,14 @@ def operational_epoch() -> dt.date | None:
     an evidence gap to recover, never proof of a fresh install. None only when
     the database itself does not exist, which is the one genuinely
     uninitialized state this deployment can be in.
+
+    A database that EXISTS but whose baseline cannot be read — corrupt file,
+    empty migration ledger, unparsable timestamp — refuses composition
+    instead. Returning None there would make the §31.7 backlog silently
+    empty, which is the fail-open this remediation exists to close: an
+    unreadable baseline is an evidence gap to surface loudly, never a fresh
+    install, and a supervisor that cannot know what it owes must not start
+    and quietly attest nothing.
     """
     if not DB_PATH.is_file():
         return None
@@ -70,14 +78,27 @@ def operational_epoch() -> dt.date | None:
             row = conn.execute("SELECT MIN(applied_at) FROM schema_migrations").fetchone()
         finally:
             conn.close()
-    except sqlite3.Error:
-        return None  # unreadable baseline: attest nothing rather than guess
+    except sqlite3.Error as error:
+        raise RuntimeError(
+            f"operational baseline unreadable (§31.7): {DB_PATH} exists but "
+            f"the migration ledger could not be read ({error}) — refusing to "
+            f"compose a supervisor that would treat an evidence gap as a "
+            f"fresh install"
+        ) from error
     if not row or not row[0]:
-        return None
+        raise RuntimeError(
+            f"operational baseline unreadable (§31.7): {DB_PATH} exists but "
+            f"holds no migration record — a half-initialised database is an "
+            f"evidence gap, never a fresh install"
+        )
     try:
         return dt.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00")).date()
-    except ValueError:
-        return None
+    except ValueError as error:
+        raise RuntimeError(
+            f"operational baseline unreadable (§31.7): migration timestamp "
+            f"{row[0]!r} in {DB_PATH} does not parse — refusing to guess the "
+            f"epoch"
+        ) from error
 OPS_STATE = REPO / "state" / "ops"
 
 # Two records, two questions (see runner/liveness.py). The delivery marker is
@@ -111,6 +132,63 @@ ASSUMPTION_MARKER = OPS_STATE / "supervisor-startup-legacy-assumption.json"
 # retry schedule in `_checked_probe` can be budgeted deterministically. Two
 # requests per probe worst case (account discovery + openPositions).
 PROBE_REQUEST_TIMEOUT_SECONDS = 12.0
+
+
+def power_readiness_check() -> tuple[bool, str]:
+    """§31.5 machine-observable power readiness, via runner.power (pmset).
+
+    Fail closed on ANY inability to verify: an unreadable power state is an
+    unverified power state. Lazy import mirrors probe(): composition is where
+    runtime dependencies are made and seen.
+    """
+    from trading_firm.runner.power import read_power_state
+
+    try:
+        state = read_power_state()
+    except Exception as error:  # noqa: BLE001 — cannot verify == not verified
+        return False, f"power probe failed: {type(error).__name__}"
+    if state.ready:
+        return True, "AC power, sleep-prevention assertions, no recent sleep"
+    return False, "; ".join(state.reasons()) or "power state not ready"
+
+
+def build_supervisor(
+    clock: SessionClock,
+    *,
+    notify_fn,
+    report_dir: Path | None = None,
+    now=None,
+    sleep=time.sleep,
+    heartbeat=None,
+    sweep=None,
+    probe_fn=None,
+) -> Supervisor:
+    """THE production composition. main() calls this; composition tests call
+    this. There is deliberately no second place that assembles a Supervisor.
+
+    The three §31 control-plane contracts are wired HERE, unconditionally,
+    with no override parameters: the operational epoch from the durable
+    database baseline, the runtime suspension detector, and the §31.5 power
+    verifier. This function exists because all three shipped silently
+    unwired — each was built, unit-tested with direct injection, and never
+    passed by the composition, and nothing failed. The wiring-manifest
+    acceptance test now pins every contracted keyword below.
+    """
+    from trading_firm.runner.power import SuspensionDetector
+
+    return Supervisor(
+        clock=clock,
+        probe=probe_fn if probe_fn is not None else probe,
+        notify=notify_fn,
+        report_dir=report_dir if report_dir is not None else REPO / "reports" / "ops",
+        now=now if now is not None else (lambda: dt.datetime.now(dt.UTC)),
+        sleep=sleep,
+        heartbeat=heartbeat,
+        sweep=sweep,
+        epoch=operational_epoch(),
+        suspension=SuspensionDetector(),
+        power_check=power_readiness_check,
+    )
 
 
 def probe() -> HealthReport:
@@ -336,13 +414,10 @@ def main() -> int:
     )
     announcer = StartupAnnouncer(beat, payload, now_utc)
 
-    supervisor = Supervisor(
-        clock=clock,
-        probe=probe,
-        notify=notify,
-        report_dir=REPO / "reports" / "ops",
+    supervisor = build_supervisor(
+        clock,
+        notify_fn=notify,
         now=now_utc,
-        sleep=time.sleep,
         heartbeat=announcer,
         sweep=sweep,
     )

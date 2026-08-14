@@ -30,7 +30,9 @@ observability module is no reason to weaken that.
 
 from __future__ import annotations
 
+import datetime as dt
 import enum
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -62,30 +64,49 @@ class PowerState:
     prevent_system_sleep: bool
     prevent_idle_sleep: bool
     recent_sleep_events: int
+    # §31.5 channel state: did the sleep-history query itself SUCCEED? A
+    # count of zero is meaningful only when something was actually counted.
+    # Defaults False — a PowerState that never positively claims a verified
+    # history cannot pass, which is the direction every §31 default in this
+    # branch now points.
+    sleep_history_verified: bool = False
     detail: str = ""
 
     @property
     def ready(self) -> bool:
         """Every machine-observable requirement, all of which must hold.
 
-        Lid state is deliberately absent: macOS does not reliably expose it, so
-        claiming to check it would be a lie told by a health gate.
+        `sleep_history_verified` guards the recent-sleep count: zero events
+        from a query that never ran is not zero events, it is no evidence
+        (§31.5 "fails closed for stability qualification"). Lid state is
+        deliberately absent: macOS does not reliably expose it, so claiming
+        to check it would be a lie told by a health gate.
         """
         return (
             self.source is PowerSource.AC
             and self.prevent_system_sleep
             and self.prevent_idle_sleep
+            and self.sleep_history_verified
             and self.recent_sleep_events == 0
         )
 
     def reasons(self) -> tuple[str, ...]:
         problems: list[str] = []
-        if self.source is not PowerSource.AC:
-            problems.append(f"not on AC power ({self.source})")
+        if self.source is PowerSource.BATTERY:
+            problems.append("not on AC power (battery)")
+        elif self.source is not PowerSource.AC:
+            # UNKNOWN covers both "command failed" and "output unparseable":
+            # either way AC was not ESTABLISHED, which is different from
+            # established-absent and must read differently to the operator.
+            problems.append("power source could not be verified (pmset unavailable or unreadable)")
         if not self.prevent_system_sleep:
             problems.append("PreventSystemSleep assertion absent (caffeinate -s)")
         if not self.prevent_idle_sleep:
             problems.append("PreventUserIdleSystemSleep assertion absent (caffeinate -i)")
+        if not self.sleep_history_verified:
+            problems.append(
+                "sleep history could not be verified (pmset -g log failed or unreadable)"
+            )
         if self.recent_sleep_events:
             problems.append(
                 f"{self.recent_sleep_events} sleep event(s) in the last hour — the "
@@ -94,16 +115,27 @@ class PowerState:
         return tuple(problems)
 
 
-def _pmset(*args: str) -> str:
-    """Run pmset read-only. Any failure yields empty output, never an exception:
-    a health probe that crashes the supervisor inverts its own purpose."""
+def _pmset(*args: str) -> str | None:
+    """Run pmset read-only. Never raises: a health probe that crashes the
+    supervisor inverts its own purpose.
+
+    Returns stdout on success — possibly empty, which is a valid answer —
+    and None when the command could not answer: timeout, non-zero exit,
+    missing executable, permission or decode failure. The two must never
+    share a representation. '' means "queried, and there was nothing";
+    None means "nothing was queried". Collapsing failure to '' was the
+    sentinel bug of the final rereview: a dead `pmset -g log` read as a
+    quiet sleep history, and readiness passed on evidence that was never
+    obtained.
+    """
     try:
         result = subprocess.run(
             ["pmset", *args], capture_output=True, text=True, timeout=20
         )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout if result.returncode == 0 else ""
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # ValueError covers decode failures: an unreadable answer is no answer.
+        return None
+    return result.stdout if result.returncode == 0 else None
 
 
 def parse_power_source(ps_output: str) -> PowerSource:
@@ -134,27 +166,105 @@ def parse_assertions(assertions_output: str) -> tuple[bool, bool]:
     return system, idle
 
 
-def count_recent_sleep_events(log_output: str, *, limit: int = 400) -> int:
-    """Sleep entries in `pmset -g log` output. Caller supplies a pre-filtered
-    window; this counts the transitions that matter."""
+# `pmset -g log` stamps every line with local civil time PLUS its UTC offset
+# (e.g. "2026-08-04 23:50:18 -0500"), so a parsed timestamp is an unambiguous
+# absolute instant — a DST fallback hour cannot produce an ambiguous parse,
+# because the offset distinguishes the two wall-clock occurrences.
+_SLEEP_SIGNATURE = "Entering Sleep state"
+_LOG_TIMESTAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\b")
+
+
+def count_recent_sleep_events(
+    log_output: str,
+    *,
+    now: dt.datetime | None = None,
+    window_seconds: float = RECENT_SLEEP_WINDOW_SECONDS,
+) -> int:
+    """Sleep entries inside the ratified time window, from `pmset -g log`.
+
+    TIME-bounded, deliberately not line-bounded. The previous implementation
+    read only the final 400 lines, which made the safety property depend on
+    log density rather than on time: a sleep event 45 minutes old vanished
+    behind 400 denser lines and power readiness passed — reproduced
+    deterministically during final review. Position in the log is never a
+    substitute for a timestamp comparison, so every line is examined and only
+    the parsed instant decides.
+
+    Fail-closed parsing contract, per §31.5's fails-closed posture:
+
+    - a line carrying the sleep signature whose timestamp parses inside
+      [now - window, now] counts (cutoff INCLUSIVE: a sleep exactly at the
+      boundary is "within this window");
+    - a line carrying the sleep signature whose timestamp is absent, wrapped,
+      or unparseable ALSO counts — a sleep we cannot place in time cannot be
+      proven old, and unprovable readiness is unearned readiness;
+    - a line without the signature is ignored regardless of shape: garbage
+      that is not sleep evidence disqualifies nothing.
+    """
+    if now is None:
+        now = dt.datetime.now(dt.UTC)
+    cutoff = now - dt.timedelta(seconds=window_seconds)
     count = 0
-    for line in log_output.splitlines()[-limit:]:
-        if "Entering Sleep state" in line:
+    for line in log_output.splitlines():
+        if _SLEEP_SIGNATURE not in line:
+            continue
+        match = _LOG_TIMESTAMP.match(line)
+        if match is None:
+            count += 1  # recognized sleep, unplaceable in time: fail closed
+            continue
+        try:
+            instant = dt.datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S %z")
+        except ValueError:
+            count += 1  # matched the shape but not a real instant: fail closed
+            continue
+        if instant >= cutoff:
             count += 1
     return count
 
 
-def read_power_state(*, recent_sleep_lines: str | None = None) -> PowerState:
-    """Probe macOS for everything §31.5 requires. Never raises."""
-    source = parse_power_source(_pmset("-g", "ps"))
-    system, idle = parse_assertions(_pmset("-g", "assertions"))
+def _log_establishes_history(log_text: str) -> bool:
+    """Can this SUCCESSFUL query output actually answer the sleep question?
+
+    Empty output is a valid answer: the command ran and there were no events.
+    Non-empty output must carry at least one parseable pmset timestamp
+    anywhere — a real `pmset -g log` stamps every entry, so output with no
+    stamp at all is not a log we can read history from (truncated, garbled,
+    or not pmset), and an unreadable history is an unverified one.
+    """
+    if log_text.strip() == "":
+        return True
+    return any(_LOG_TIMESTAMP.match(line) for line in log_text.splitlines())
+
+
+def read_power_state(
+    *, recent_sleep_lines: str | None = None, now: dt.datetime | None = None
+) -> PowerState:
+    """Probe macOS for everything §31.5 requires.
+
+    Never raises on the production path — the no-argument call. The two
+    injection parameters are test seams with their own contracts: an
+    injected naive `now` violates the aware-instant comparison and may
+    raise, which is itself the fail-closed outcome for a corrupt clock.
+
+    Each pmset channel keeps its failure distinct from its empty answer:
+    a failed `ps` yields UNKNOWN (not AC), failed `assertions` yields
+    absent-assertions, and a failed or unusable `log` yields
+    sleep_history_verified=False — never a quiet count of zero. `now` is
+    injectable so the recent-sleep window is deterministic under test.
+    """
+    source = parse_power_source(_pmset("-g", "ps") or "")
+    system, idle = parse_assertions(_pmset("-g", "assertions") or "")
     log_text = recent_sleep_lines if recent_sleep_lines is not None else _pmset("-g", "log")
-    recent = count_recent_sleep_events(log_text)
+    if log_text is None or not _log_establishes_history(log_text):
+        sleep_verified, recent = False, 0
+    else:
+        sleep_verified, recent = True, count_recent_sleep_events(log_text, now=now)
     return PowerState(
         source=source,
         prevent_system_sleep=system,
         prevent_idle_sleep=idle,
         recent_sleep_events=recent,
+        sleep_history_verified=sleep_verified,
         detail="pmset",
     )
 

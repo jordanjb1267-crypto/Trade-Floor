@@ -21,6 +21,7 @@ import pytest
 
 from trading_firm.config import BASE_CONFIG_PATH, load_config
 from trading_firm.notify.surface import NotificationKind
+from trading_firm.runner.power import SuspensionDetector
 from trading_firm.runner.schedule import next_event
 from trading_firm.runner.supervisor import HealthReport, Supervisor
 from trading_firm.runner.timing import FlatState, SessionAuthority
@@ -61,6 +62,13 @@ class Driver:
             report_dir=tmp_path,
             now=lambda: self.moment,
             sleep=lambda s: None,
+            # §31.5: qualification requires the three runtime controls wired
+            # and an EXECUTED positive power verification — the same contract
+            # the production builder satisfies. Frozen detector clocks: no
+            # drift, so no suspension is ever detected by these tests.
+            heartbeat=lambda phase: None,
+            suspension=SuspensionDetector(wall=lambda: 0.0, monotonic=lambda: 0.0),
+            power_check=lambda: (True, "test: power verified"),
             epoch=epoch,
         )
 
@@ -443,11 +451,16 @@ class TestOperationalEpoch:
         # A missing database is the one genuinely uninitialized state.
         monkeypatch.setattr(module, "DB_PATH", tmp_path / "absent.sqlite")
         assert module.operational_epoch() is None
-        # A corrupt database yields None (attest nothing) rather than a guess.
+        # A corrupt database REFUSES composition (§31.7): it exists, so its
+        # unreadable baseline is an evidence gap to surface loudly. The prior
+        # contract returned None here, which silently emptied the backlog —
+        # a fresh-install disguise for exactly the state that must never wear
+        # one ("must never be silently treated as a fresh install").
         bad = tmp_path / "bad.sqlite"
         bad.write_text("not a database")
         monkeypatch.setattr(module, "DB_PATH", bad)
-        assert module.operational_epoch() is None
+        with pytest.raises(RuntimeError, match="operational baseline unreadable"):
+            module.operational_epoch()
 
     def test_recovery_earliest_date_comes_from_the_epoch(self, clock, tmp_path) -> None:
         epoch = dt.date(2026, 7, 23)
