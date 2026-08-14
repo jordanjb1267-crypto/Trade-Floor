@@ -1,0 +1,66 @@
+{
+  "session_date": "2026-08-10",
+  "degraded": true,
+  "nominal": false,
+  "qualifying": false,
+  "session_health": "DEGRADED",
+  "qualification": "NON_QUALIFYING",
+  "qualification_reason": "SESSION DEGRADED",
+  "authority_state": "halted",
+  "clock_regressions": 0,
+  "required_event_count": 5,
+  "clean_event_count": 4,
+  "late_event_count": 0,
+  "failed_event_count": 1,
+  "max_lateness_s": 0.171,
+  "flat_state": "UNVERIFIED",
+  "suspension_detected": false,
+  "reasons": [
+    "flatten outcome not acceptable",
+    "flat state UNVERIFIED"
+  ],
+  "events": [
+    {
+      "event": "pre_startup",
+      "at": "2026-08-10T06:15:00.171455+00:00",
+      "outcome": "broker OK, account flat (practice host)",
+      "scheduled_at": "2026-08-10T07:15:00+01:00",
+      "lateness_s": 0.171,
+      "timing_status": "on_time"
+    },
+    {
+      "event": "briefing",
+      "at": "2026-08-10T06:40:00.140631+00:00",
+      "outcome": "boundary kept",
+      "scheduled_at": "2026-08-10T07:40:00+01:00",
+      "lateness_s": 0.141,
+      "timing_status": "on_time"
+    },
+    {
+      "event": "activation",
+      "at": "2026-08-10T07:00:00.140442+00:00",
+      "outcome": "boundary kept",
+      "scheduled_at": "2026-08-10T08:00:00+01:00",
+      "lateness_s": 0.14,
+      "timing_status": "on_time"
+    },
+    {
+      "event": "entry_cutoff",
+      "at": "2026-08-10T09:30:00.140219+00:00",
+      "outcome": "manage-only from here (\u00a714)",
+      "scheduled_at": "2026-08-10T10:30:00+01:00",
+      "lateness_s": 0.14,
+      "timing_status": "on_time"
+    },
+    {
+      "event": "flatten",
+      "at": "2026-08-10T10:00:00.144273+00:00",
+      "outcome": "UNVERIFIED: broker unreachable: BrokerAuthError: HTTP 401 from the practice host on GET /v3/accounts/101-001-<redacted-account>-001/openPositions: credential rejected (Insufficient authorization to perform request.). Check that OANDA_DEMO_API_TOKEN holds a current fxTrade Practice token \u2014 a live token is also rejected here by design (\u00a713).",
+      "scheduled_at": "2026-08-10T11:00:00+01:00",
+      "lateness_s": 0.144,
+      "timing_status": "on_time"
+    }
+  ],
+  "environment": "shadow",
+  "orders_placed": 0
+}
