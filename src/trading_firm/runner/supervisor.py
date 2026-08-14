@@ -105,6 +105,13 @@ PROBE_RETRY_DELAY_SECONDS = 15.0
 # Worst case per attempt: account discovery + openPositions, each bounded by
 # the probe's request timeout (12 s in scripts/run_supervisor.py), plus margin.
 PROBE_ATTEMPT_BUDGET_SECONDS = 25.0
+# Pinned-path budget: with OANDA_DEMO_ACCOUNT_ID validly configured, an
+# attempt is ONE scoped request (<=12 s) + margin — account discovery never
+# runs. Selected by the composition script from configuration state, never
+# inferred from how fast discovery happens to be. The deadline, the retry
+# delay, and the request timeout are unchanged: the budget is subordinate to
+# the §31.2 window, not a way around it.
+PINNED_PROBE_ATTEMPT_BUDGET_SECONDS = 15.0
 
 
 class NonRetryableProbeError(RuntimeError):
@@ -236,6 +243,7 @@ class Supervisor:
         suspension: object | None = None,
         epoch: dt.date | None = None,
         power_check: PowerCheck | None = None,
+        probe_attempt_budget_seconds: float = PROBE_ATTEMPT_BUDGET_SECONDS,
     ) -> None:
         self._clock = clock
         self._probe = probe
@@ -247,6 +255,11 @@ class Supervisor:
         self._sweep = sweep
         self._suspension = suspension
         self._power_check = power_check
+        # Account-pin review 2026-08-11: the admitted per-attempt verification
+        # budget, chosen ONCE by the composition script from configuration
+        # state (pinned = one scoped request, unpinned = discovery + scoped).
+        # Subordinate to the §31.2 deadline guards below, never a way past them.
+        self._probe_attempt_budget = probe_attempt_budget_seconds
         # §31.7 operational epoch: the date of the firm's authoritative durable
         # baseline (database initialization, read by the composition script).
         # None means genuinely uninitialized — nothing was ever expected of
@@ -309,13 +322,13 @@ class Supervisor:
                 if deadline is not None and (
                     (now - deadline).total_seconds()
                     + PROBE_RETRY_DELAY_SECONDS
-                    + PROBE_ATTEMPT_BUDGET_SECONDS
+                    + self._probe_attempt_budget
                 ) > 0:
                     break  # neither the sleep nor the attempt fits the window
                 self._sleep(PROBE_RETRY_DELAY_SECONDS)
             now = self._now()
             if deadline is not None and (
-                (now - deadline).total_seconds() + PROBE_ATTEMPT_BUDGET_SECONDS
+                (now - deadline).total_seconds() + self._probe_attempt_budget
             ) > 0:
                 break  # an attempt started now could not legally complete
             attempts_made = attempt

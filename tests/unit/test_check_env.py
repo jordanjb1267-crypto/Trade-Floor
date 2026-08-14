@@ -293,3 +293,48 @@ class TestDoesNotTouchTheRealEnv:
         real_root = "run_checks(" + "REPO"
         assert no_args not in source, "a test invokes the validator against the real .env"
         assert real_root not in source, "a test points run_checks at the real repo root"
+
+
+class TestOptionalAccountPin:
+    """Account-pinning review, 2026-08-11: optional fourth variable, fully
+    validated when present. An attempted pin is never 'same as absent'."""
+
+    GOOD_PIN = "OANDA_DEMO_ACCOUNT_ID=101-001-00000000-001\n"
+
+    def test_original_three_variable_environment_remains_valid(self, repo) -> None:
+        write_env(repo, GOOD)
+        assert not [c for c in check_env.run_checks(repo / ".env", repo_root=repo) if not c.ok]
+
+    def test_valid_optional_pin_is_accepted(self, repo) -> None:
+        write_env(repo, GOOD + self.GOOD_PIN)
+        checks = check_env.run_checks(repo / ".env", repo_root=repo)
+        assert not [c.name for c in checks if not c.ok]
+        assert any(c.name == "format: OANDA_DEMO_ACCOUNT_ID" and c.ok for c in checks)
+
+    def test_present_but_empty_pin_is_rejected(self, repo) -> None:
+        write_env(repo, GOOD + "OANDA_DEMO_ACCOUNT_ID=\n")
+        found = {c.name: c for c in check_env.run_checks(repo / ".env", repo_root=repo)}
+        assert not found["format: OANDA_DEMO_ACCOUNT_ID"].ok
+
+    def test_placeholder_pin_is_rejected(self, repo) -> None:
+        write_env(repo, GOOD + "OANDA_DEMO_ACCOUNT_ID=<practice account>\n")
+        found = {c.name: c for c in check_env.run_checks(repo / ".env", repo_root=repo)}
+        assert not found["format: OANDA_DEMO_ACCOUNT_ID"].ok
+
+    def test_malformed_pin_is_rejected(self, repo) -> None:
+        write_env(repo, GOOD + "OANDA_DEMO_ACCOUNT_ID=not-an-account\n")
+        found = {c.name: c for c in check_env.run_checks(repo / ".env", repo_root=repo)}
+        assert not found["format: OANDA_DEMO_ACCOUNT_ID"].ok
+
+    def test_surrounding_whitespace_is_normalized_by_documented_grammar(self, repo) -> None:
+        """parse_assignments strips surrounding whitespace by the same grammar
+        as env_file.parse_env_text — the repository's documented parse policy."""
+        write_env(repo, GOOD + "OANDA_DEMO_ACCOUNT_ID=  101-001-00000000-001  \n")
+        found = {c.name: c for c in check_env.run_checks(repo / ".env", repo_root=repo)}
+        assert found["format: OANDA_DEMO_ACCOUNT_ID"].ok
+
+    def test_unrelated_extra_variables_are_still_rejected(self, repo) -> None:
+        write_env(repo, GOOD + self.GOOD_PIN + "SOME_OTHER_TOKEN=x\n")
+        found = {c.name: c for c in check_env.run_checks(repo / ".env", repo_root=repo)}
+        assert not found["exactly the required variables"].ok
+        assert "SOME_OTHER_TOKEN" in found["exactly the required variables"].detail

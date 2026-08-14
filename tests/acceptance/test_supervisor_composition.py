@@ -62,6 +62,13 @@ MON = dt.date(2026, 8, 10)  # the restart session
 CONTRACTED = {
     "clock", "probe", "notify", "report_dir", "now", "sleep",
     "heartbeat", "sweep", "epoch", "suspension", "power_check",
+    # Deliberate manifest decision (account-pin v2 integration): the §31.2
+    # per-attempt verification budget is configuration-derived (pinned = one
+    # scoped request = 15 s, unpinned = discovery + scoped = 25 s) and the
+    # builder must choose it explicitly — a silently-defaulted budget would
+    # quietly waste the pinned path's retry margin, the exact benefit the
+    # account pin exists to buy.
+    "probe_attempt_budget_seconds",
 }
 
 
@@ -438,6 +445,17 @@ class TestCompositionWiringManifest:
             "power_check must be the §31.5 verifier, power_readiness_check"
         )
 
+        budget = wired["probe_attempt_budget_seconds"]
+        assert (
+            isinstance(budget, ast.Call)
+            and isinstance(budget.func, ast.Name)
+            and budget.func.id == "probe_attempt_budget_seconds"
+        ), (
+            "the attempt budget must be DERIVED from configuration state by "
+            "probe_attempt_budget_seconds() — a hardcoded constant here would "
+            "silently discard the pinned path's retry margin"
+        )
+
     def test_the_builder_offers_no_override_for_the_controls(self) -> None:
         """The three recovered controls are wired unconditionally: no caller —
         test or production — can pass a substitute through the builder."""
@@ -457,6 +475,29 @@ class TestCompositionWiringManifest:
         assert sup._epoch == EPOCH_DATE, "epoch did not arrive from the database"
         assert isinstance(sup._suspension, SuspensionDetector)
         assert sup._power_check is runner.power_readiness_check
+
+    def test_the_builder_derives_the_budget_from_the_pin_state(
+        self, clock, tmp_path, monkeypatch
+    ) -> None:
+        """Account-pin v2: the §31.2 attempt budget arrives from configuration
+        state through the real builder — 15 s only for a VALID explicit pin
+        (one scoped request per attempt), 25 s for genuinely-unpinned, and the
+        conservative 25 s for a broken pin, whose probe then fails closed
+        non-retryably at the transport (proven in test_account_pin.py)."""
+        monkeypatch.delenv("OANDA_DEMO_ACCOUNT_ID", raising=False)
+        unpinned = Composer(clock, tmp_path / "unpinned", monkeypatch)
+        assert unpinned.supervisor._probe_attempt_budget == 25.0
+
+        monkeypatch.setenv("OANDA_DEMO_ACCOUNT_ID", "101-001-12345678-001")
+        pinned = Composer(clock, tmp_path / "pinned", monkeypatch)
+        assert pinned.supervisor._probe_attempt_budget == 15.0
+
+        monkeypatch.setenv("OANDA_DEMO_ACCOUNT_ID", "not-an-account-id")
+        broken = Composer(clock, tmp_path / "broken", monkeypatch)
+        assert broken.supervisor._probe_attempt_budget == 25.0, (
+            "an invalid pin gets the conservative budget — the smaller pinned "
+            "budget for a broken configuration would be inference from hope"
+        )
 
     def test_the_script_never_nulls_a_control_after_construction(self) -> None:
         """M-D. The AST cannot prove the absence of post-construction mutation
